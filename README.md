@@ -9,6 +9,8 @@
 
 **NetworkSentinel** is a lightweight, real-time network telemetry triage and threat detection system. It passively captures Layer 3/4 network traffic, filters noise in memory, buffers flows in Redis, evaluates anomalies using **TypeSafe AI's Jev** System One decision model, streams live telemetry to a cyber-styled dashboard over WebSockets, and dispatches containment alerts via **Resend**.
 
+![NetworkSentinel Architecture](architecture.jpeg)
+
 ---
 
 ## ⚡ Core Features

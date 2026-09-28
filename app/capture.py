@@ -173,6 +173,9 @@ def extract_packet_state(packet: Any) -> Optional[Dict[str, Any]]:
 
     entropy = calculate_entropy(payload)
 
+    # Detect TLS Application Data (RFC 5246: ContentType 0x17 = 23, Version 0x03)
+    is_tls_app_data = len(payload) >= 3 and payload[0] == 0x17 and payload[1] == 0x03
+
     return {
         "timestamp": timestamp,
         "protocol": protocol,
@@ -181,6 +184,8 @@ def extract_packet_state(packet: Any) -> Optional[Dict[str, Any]]:
         "dst_port": dst_port,
         "domain_or_sni": domain_or_sni or "",
         "payload_snippet": payload_snippet,
+        "payload_len": len(payload),
+        "is_tls_app_data": is_tls_app_data,
         "entropy": entropy,
     }
 

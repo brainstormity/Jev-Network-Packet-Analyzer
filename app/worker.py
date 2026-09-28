@@ -1,10 +1,11 @@
 """Redis consumer, Token Bucket rate pacer, and TypeSafe Jev System One triage worker."""
 
 import asyncio
+import ipaddress
 import json
 import logging
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 import redis.asyncio as aioredis
@@ -110,6 +111,126 @@ def simulate_jev_decision(state: Dict[str, Any]) -> Tuple[float, str, float, flo
     return 0.02, "benign", 0.99, 0.0, 0.99
 
 
+EXPLOIT_KEYWORDS = (
+    "union select",
+    "select *",
+    "/etc/passwd",
+    "eval(",
+    "/bin/sh",
+    "cmd.exe",
+    "<script>",
+    "../",
+    "exec(",
+    "system(",
+    "passthru(",
+)
+
+C2_KEYWORDS = (
+    "beacon",
+    "c2-checkin",
+    "uuid=",
+    "cmd_exec",
+    "heartbeat",
+)
+
+SUSPICIOUS_DOMAINS = (
+    "dynamic-dns",
+    "duckdns",
+    "ngrok",
+    "c2-checkin",
+    "evil-corp",
+)
+
+SUSPICIOUS_PORTS = {21, 23, 135, 445, 1337, 3389, 4444, 6667, 8888, 31337}
+
+
+def has_exploit_or_suspicion(state: Dict[str, Any]) -> bool:
+    """Check if the packet state has any explicit exploit, C2, or anomaly indicators."""
+    snippet = (state.get("payload_snippet") or "").lower()
+    domain = (state.get("domain_or_sni") or "").lower()
+    port = state.get("dst_port", 0)
+    entropy = float(state.get("entropy", 0.0))
+
+    if any(k in snippet for k in EXPLOIT_KEYWORDS):
+        return True
+    if any(k in snippet for k in C2_KEYWORDS):
+        return True
+    if any(k in domain for k in SUSPICIOUS_DOMAINS):
+        return True
+    if port in SUSPICIOUS_PORTS:
+        return True
+    if port == 53 and (entropy > 4.5 or len(domain) > 40):
+        return True
+    if state.get("is_simulated"):
+        return True
+    return False
+
+
+def is_l1_bypassed_benign(state: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    """L1 Deterministic Pre-Filter.
+
+    Bypasses encrypted TLS application data streams and zero-payload TCP packets
+    if they contain no exploit or anomaly signatures.
+    """
+    if has_exploit_or_suspicion(state):
+        return False, None
+
+    port = state.get("dst_port", 0)
+    snippet = state.get("payload_snippet") or ""
+    payload_len = state.get("payload_len", len(snippet))
+    is_tls = state.get("is_tls_app_data", False) or snippet.startswith("\x17\x03")
+
+    # 1. Encrypted TLS Application Data on standard TLS ports (443, 8443, etc.)
+    # Ciphertext cannot be meaningfully analyzed by Jev AI and causes false flags or token waste
+    if is_tls and port in (443, 8443, 993, 995, 465, 8080):
+        return True, "l1_tls_app_data"
+
+    # 2. Zero-Payload TCP control packets on routine ports (80, 443, 8080, etc.)
+    if payload_len == 0 or not snippet.strip():
+        if port in (80, 443, 8080, 8443, 53) or port > 1024:
+            return True, "l1_zero_payload"
+
+    return False, None
+
+
+def is_private_ip(ip_str: str) -> bool:
+    """Identify RFC 1918 private, loopback, or link-local IP addresses."""
+    try:
+        ip = ipaddress.ip_address(ip_str.strip())
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except (ValueError, AttributeError):
+        return False
+
+
+def get_flow_cache_keys(state: Dict[str, Any]) -> List[str]:
+    """Generate multi-level cache keys: domain, bidirectional host flow pair, and external peer IP."""
+    keys: List[str] = []
+    domain = (state.get("domain_or_sni") or "").strip().lower()
+    src_ip = (state.get("src_ip") or "").strip()
+    dst_ip = (state.get("dst_ip") or "").strip()
+
+    # 1. Domain cache key (e.g. cache:domain:gstatic.com)
+    if domain:
+        keys.append(f"{settings.REDIS_CACHE_PREFIX}{domain}")
+
+    # 2. Bidirectional host flow pair (e.g. cache:flow:104.18.25.46:172.18.0.3)
+    if src_ip and dst_ip:
+        ip_pair = sorted([src_ip, dst_ip])
+        keys.append(f"cache:flow:{ip_pair[0]}:{ip_pair[1]}")
+
+    # 3. External peer IP key (if one IP is private and one is public)
+    if dst_ip and not is_private_ip(dst_ip):
+        keys.append(f"cache:ip:{dst_ip}")
+    elif src_ip and not is_private_ip(src_ip):
+        keys.append(f"cache:ip:{src_ip}")
+
+    # Fallback to direct dst_ip for backwards compatibility
+    if dst_ip and f"{settings.REDIS_CACHE_PREFIX}{dst_ip}" not in keys:
+        keys.append(f"{settings.REDIS_CACHE_PREFIX}{dst_ip}")
+
+    return keys
+
+
 class JevWorker:
     """Consumes raw events from Redis, evaluates with Jev, and emits classified records."""
 
@@ -209,23 +330,36 @@ class JevWorker:
         except Exception:
             return None
 
-        domain_or_sni = (state.get("domain_or_sni") or "").strip()
-        dst_ip = state.get("dst_ip", "").strip()
-
-        # Cache key based on domain or fallback to destination IP
-        cache_identifier = domain_or_sni if domain_or_sni else dst_ip
-        cache_key = f"{settings.REDIS_CACHE_PREFIX}{cache_identifier}" if cache_identifier else None
+        is_sim = bool(state.get("is_simulated", False))
+        is_threat_suspect = has_exploit_or_suspicion(state)
+        cache_keys = get_flow_cache_keys(state)
 
         cached = False
-        # 1. Check Redis Deduplication Cache (TTL: 1 hour)
-        if cache_key:
+        # 1. Check Redis Deduplication Cache (skip cache if explicit exploit/threat suspect or simulated drill)
+        if not is_sim and not is_threat_suspect and cache_keys:
             try:
-                cached_val = await r.get(cache_key)
-                if cached_val == "benign":
-                    cached = True
-                    await r.incr("net:stats:cached")
+                for ck in cache_keys:
+                    cached_val = await r.get(ck)
+                    if cached_val == "benign":
+                        cached = True
+                        await r.incr("net:stats:cached")
+                        break
             except Exception as e:
                 logger.debug("Redis cache check error: %s", e)
+
+        # 2. L1 Pre-Filter & TLS Application Data bypass
+        # If not already in cache, check if L1 pre-filter can resolve it as benign immediately
+        if not cached and not is_sim:
+            bypassed, reason = is_l1_bypassed_benign(state)
+            if bypassed:
+                cached = True
+                await r.incr("net:stats:cached")
+                # Populate Redis flow cache for this benign flow (TTL: 24 hours / 86400s)
+                try:
+                    for ck in cache_keys:
+                        await r.set(ck, "benign", ex=86400)
+                except Exception as e:
+                    logger.debug("Failed populating L1 Redis flow cache: %s", e)
 
         if cached:
             is_suspicious = 0.01
@@ -260,12 +394,16 @@ class JevWorker:
                     await r.lpush(settings.REDIS_RAW_QUEUE, json.dumps(state))
                 return None
 
-            # Cache benign domains with high confidence (> 0.95) for 1 hour (3600s)
-            if cache_key and threat_category == "benign" and category_confidence >= 0.95:
+            # Only increment evaluated counter when Jev AI evaluation actually occurred!
+            await r.incr("net:stats:evaluated")
+
+            # Cache benign domains and bidirectional flows with high confidence (> 0.95) for 24 hours (86400s)
+            if cache_keys and threat_category == "benign" and category_confidence >= 0.95:
                 try:
-                    await r.set(cache_key, "benign", ex=3600)
+                    for ck in cache_keys:
+                        await r.set(ck, "benign", ex=86400)
                 except Exception as e:
-                    logger.debug("Failed setting Redis cache key: %s", e)
+                    logger.debug("Failed setting Redis flow cache keys: %s", e)
 
         # Assemble classified event record
         classified_event = {
@@ -286,9 +424,6 @@ class JevWorker:
             classified_event["id"] = event_id
         except Exception as e:
             logger.error("Failed persisting event to SQLite: %s", e)
-
-        # Update stats
-        await r.incr("net:stats:evaluated")
 
         # 3. Check Alerting Thresholds
         should_alert = (

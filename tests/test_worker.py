@@ -140,3 +140,154 @@ async def test_worker_with_mocked_jev_api(tmp_path):
     assert res["alert_dispatched"] is True
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_l1_prefilter_tls_and_zero_payload_bypass(tmp_path):
+    """Test L1 Pre-Filter bypasses TLS app data and zero-payload TCP packets without calling Jev."""
+    db_file = str(tmp_path / "test_l1.db")
+    await database.init_db(db_file)
+    settings.DATABASE_PATH = db_file
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    worker = JevWorker()
+    worker._redis = fake_redis
+    client = httpx.AsyncClient()
+
+    # 1. Zero-payload TCP packet on port 443
+    zero_payload_event = {
+        "timestamp": 1727481600.0,
+        "protocol": "TCP",
+        "src_ip": "192.168.1.50",
+        "dst_ip": "104.18.25.46",
+        "dst_port": 443,
+        "domain_or_sni": "",
+        "payload_snippet": "",
+        "payload_len": 0,
+        "entropy": 0.0,
+    }
+    res1 = await worker.process_event(json.dumps(zero_payload_event), client)
+    assert res1 is not None
+    assert res1["threat_category"] == "benign"
+    assert res1["cached"] is True
+
+    # 2. Encrypted TLS Application Data on port 443
+    tls_event = {
+        "timestamp": 1727481601.0,
+        "protocol": "TCP",
+        "src_ip": "192.168.1.50",
+        "dst_ip": "104.18.25.46",
+        "dst_port": 443,
+        "domain_or_sni": "",
+        "payload_snippet": "\x17\x03\x03\x02?v\x88\x12",
+        "payload_len": 240,
+        "is_tls_app_data": True,
+        "entropy": 7.8,
+    }
+    res2 = await worker.process_event(json.dumps(tls_event), client)
+    assert res2 is not None
+    assert res2["threat_category"] == "benign"
+    assert res2["cached"] is True
+
+    # Evaluated by Jev counter should be ZERO because both were bypassed by L1!
+    evaluated_count = int(await fake_redis.get("net:stats:evaluated") or 0)
+    assert evaluated_count == 0
+
+    # Cache hits should be 2
+    cached_count = int(await fake_redis.get("net:stats:cached") or 0)
+    assert cached_count == 2
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_bidirectional_flow_caching(tmp_path):
+    """Test that caching outbound traffic also hits cache for return packets."""
+    db_file = str(tmp_path / "test_bidirectional.db")
+    await database.init_db(db_file)
+    settings.DATABASE_PATH = db_file
+    settings.SIMULATION_MODE = True
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    worker = JevWorker()
+    worker._redis = fake_redis
+    client = httpx.AsyncClient()
+
+    # Outbound packet from client to server
+    outbound = {
+        "timestamp": 1727481600.0,
+        "protocol": "TCP",
+        "src_ip": "172.18.0.3",
+        "dst_ip": "104.18.25.46",
+        "dst_port": 443,
+        "domain_or_sni": "example.com",
+        "payload_snippet": "GET / HTTP/1.1",
+        "payload_len": 14,
+        "entropy": 2.5,
+    }
+    res_out = await worker.process_event(json.dumps(outbound), client)
+    assert res_out is not None
+    assert res_out["threat_category"] == "benign"
+
+    # Evaluated count should be 1 (first encounter was evaluated)
+    assert int(await fake_redis.get("net:stats:evaluated") or 0) == 1
+
+    # Inbound response packet from server back to client (dst_ip is client, no domain)
+    inbound = {
+        "timestamp": 1727481601.0,
+        "protocol": "TCP",
+        "src_ip": "104.18.25.46",
+        "dst_ip": "172.18.0.3",
+        "dst_port": 58920,
+        "domain_or_sni": "",
+        "payload_snippet": "HTTP/1.1 200 OK",
+        "payload_len": 15,
+        "entropy": 3.0,
+    }
+    res_in = await worker.process_event(json.dumps(inbound), client)
+    assert res_in is not None
+    # Must hit bidirectional flow cache!
+    assert res_in["cached"] is True
+
+    # Evaluated count must STILL be 1! (Did not call Jev for response packet)
+    assert int(await fake_redis.get("net:stats:evaluated") or 0) == 1
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_l1_bypass_safety_guard_never_bypasses_exploits(tmp_path):
+    """Verify that exploit signatures are NEVER bypassed by L1 even on port 443 or with TLS tags."""
+    db_file = str(tmp_path / "test_safety.db")
+    await database.init_db(db_file)
+    settings.DATABASE_PATH = db_file
+    settings.SIMULATION_MODE = True
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    worker = JevWorker()
+    worker._redis = fake_redis
+    client = httpx.AsyncClient()
+
+    exploit_event = {
+        "timestamp": 1727481600.0,
+        "protocol": "TCP",
+        "src_ip": "10.0.0.99",
+        "dst_ip": "192.168.1.100",
+        "dst_port": 443,
+        "domain_or_sni": "target.local",
+        "payload_snippet": "GET /login?user=admin' UNION SELECT 1,2,3--",
+        "payload_len": 44,
+        "is_tls_app_data": True,  # Attacker tries to pretend to be TLS
+        "entropy": 4.5,
+    }
+
+    res = await worker.process_event(json.dumps(exploit_event), client)
+    assert res is not None
+    assert res["threat_category"] == "exploit_attempt"
+    assert res["severity"] >= 3.5
+    assert res["cached"] is False
+
+    # Jev must have been invoked for this exploit!
+    assert int(await fake_redis.get("net:stats:evaluated") or 0) == 1
+
+    await client.aclose()

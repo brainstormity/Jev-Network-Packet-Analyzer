@@ -355,6 +355,10 @@ async def get_stats(db_path: Optional[str] = None) -> Dict[str, Any]:
         async with db.execute("SELECT COUNT(*) FROM events WHERE cached = 1") as cursor:
             total_cached = (await cursor.fetchone())[0]
 
+        # Total evaluated by Jev (uncached events)
+        async with db.execute("SELECT COUNT(*) FROM events WHERE cached = 0") as cursor:
+            total_evaluated_by_jev = (await cursor.fetchone())[0]
+
         # Total threats (threat_category != 'benign' or is_suspicious >= 0.85)
         async with db.execute(
             "SELECT COUNT(*) FROM events WHERE threat_category != 'benign' OR is_suspicious >= ?",
@@ -387,6 +391,7 @@ async def get_stats(db_path: Optional[str] = None) -> Dict[str, Any]:
     return {
         "total_events": total_events,
         "total_cached": total_cached,
+        "total_evaluated_by_jev": total_evaluated_by_jev,
         "total_threats": total_threats,
         "total_alerts_sent": total_alerts_sent,
         "cache_hit_ratio": cache_hit_ratio,

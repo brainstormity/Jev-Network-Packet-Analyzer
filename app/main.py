@@ -259,17 +259,18 @@ async def get_dashboard_stats() -> Dict[str, Any]:
         await r.aclose()
     except Exception:
         captured = db_stats["total_events"]
-        evaluated = db_stats["total_events"]
+        evaluated = db_stats.get("total_evaluated_by_jev", 0)
         threats = db_stats["total_threats"]
         cached = db_stats["total_cached"]
 
     # Use max to reflect combination of persistent and active counters
     total_captured = max(captured, db_stats["total_events"])
-    total_evaluated = max(evaluated, db_stats["total_events"])
+    total_evaluated = max(evaluated, db_stats.get("total_evaluated_by_jev", 0))
     total_threats = max(threats, db_stats["total_threats"])
     total_cached = max(cached, db_stats["total_cached"])
 
-    hit_ratio = round((total_cached / total_evaluated * 100), 1) if total_evaluated > 0 else 0.0
+    total_decisions = total_evaluated + total_cached
+    hit_ratio = round((total_cached / total_decisions * 100), 1) if total_decisions > 0 else 0.0
 
     return {
         "packets_captured": total_captured,

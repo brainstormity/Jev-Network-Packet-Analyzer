@@ -19,6 +19,10 @@ venv/
 build/
 dist/
 *.spec
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
 # Local Storage, Captures & Databases
 *.sqlite3
@@ -28,6 +32,11 @@ dist/
 *.pcap
 *.pcapng
 data/
+
+# Archives & Packages
+*.tar.gz
+*.zip
+*.whl
 
 # OS & IDE Cruft
 .DS_Store

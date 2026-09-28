@@ -52,12 +52,27 @@ async def test_database_init_and_crud(tmp_path):
     assert recent_events[0]["src_ip"] == "192.168.1.50"
     assert recent_events[0]["threat_category"] == "c2_beacon"
 
-    # 4. Retrieve recent alerts
+    # 4. Retrieve recent alerts (with joined telemetry)
     recent_alerts = await database.get_recent_alerts(limit=10, db_path=db_file)
     assert len(recent_alerts) == 1
     assert recent_alerts[0]["resend_id"] == "resend_12345"
+    assert recent_alerts[0]["payload_snippet"] == "beacon probe"
+    assert recent_alerts[0]["dst_port"] == 4444
 
-    # 5. Check aggregate statistics
+    # 5. Retrieve single alert by ID
+    alert = await database.get_alert_by_id(alert_id, db_path=db_file)
+    assert alert is not None
+    assert alert["id"] == alert_id
+    assert alert["threat_category"] == "c2_beacon"
+    assert alert["payload_snippet"] == "beacon probe"
+
+    # 6. Retrieve single event by ID
+    event = await database.get_event_by_id(event_id, db_path=db_file)
+    assert event is not None
+    assert event["id"] == event_id
+    assert event["domain_or_sni"] == "c2.test.com"
+
+    # 7. Check aggregate statistics
     stats = await database.get_stats(db_path=db_file)
     assert stats["total_events"] == 1
     assert stats["total_threats"] == 1

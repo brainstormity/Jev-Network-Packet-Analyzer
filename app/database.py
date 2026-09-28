@@ -129,8 +129,100 @@ async def save_alert(alert: Dict[str, Any], db_path: Optional[str] = None) -> in
         return cursor.lastrowid or 0
 
 
-async def get_recent_events(limit: int = 100, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetch recent evaluated events in reverse chronological order."""
+async def get_recent_events(
+    limit: int = 100,
+    threats_only: bool = False,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Fetch recent evaluated events in reverse chronological order with optional filtering."""
+    path = db_path or settings.DATABASE_PATH
+    conditions: List[str] = []
+    params: List[Any] = []
+
+    if threats_only:
+        conditions.append("(LOWER(threat_category) != 'benign' OR is_suspicious >= ? OR severity >= 3.0)")
+        params.append(settings.ALERT_THRESHOLD_NOUL)
+
+    if category and category.lower() not in ("all", "threats"):
+        conditions.append("LOWER(threat_category) = ?")
+        params.append(category.lower())
+
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        conditions.append(
+            "(LOWER(src_ip) LIKE ? OR LOWER(dst_ip) LIKE ? OR LOWER(COALESCE(domain_or_sni, '')) LIKE ? OR LOWER(COALESCE(payload_snippet, '')) LIKE ?)"
+        )
+        params.extend([term, term, term, term])
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    sql = f"""
+    SELECT
+        id, timestamp, protocol, src_ip, dst_ip, dst_port,
+        domain_or_sni, payload_snippet, entropy,
+        is_suspicious, threat_category, category_confidence,
+        severity, severity_confidence, cached, alert_dispatched,
+        created_at
+    FROM events
+    {where_clause}
+    ORDER BY id DESC
+    LIMIT ?
+    """
+    params.append(limit)
+
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, tuple(params)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_recent_alerts(limit: int = 50, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetch recent alert records joined with their associated event telemetry."""
+    path = db_path or settings.DATABASE_PATH
+    sql = """
+    SELECT
+        a.id, a.event_id, a.src_ip, a.dst_ip, a.threat_category, a.severity,
+        a.recipient, a.status, a.resend_id, a.error_message, a.created_at,
+        e.timestamp as event_timestamp, e.protocol, e.dst_port, e.domain_or_sni,
+        e.payload_snippet, e.entropy, e.is_suspicious, e.category_confidence,
+        e.severity_confidence, e.cached, e.alert_dispatched
+    FROM alerts a
+    LEFT JOIN events e ON a.event_id = e.id
+    ORDER BY a.id DESC
+    LIMIT ?
+    """
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_alert_by_id(alert_id: int, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Fetch a single alert by ID with its associated telemetry event log."""
+    path = db_path or settings.DATABASE_PATH
+    sql = """
+    SELECT
+        a.id, a.event_id, a.src_ip, a.dst_ip, a.threat_category, a.severity,
+        a.recipient, a.status, a.resend_id, a.error_message, a.created_at,
+        e.timestamp as event_timestamp, e.protocol, e.dst_port, e.domain_or_sni,
+        e.payload_snippet, e.entropy, e.is_suspicious, e.category_confidence,
+        e.severity_confidence, e.cached, e.alert_dispatched
+    FROM alerts a
+    LEFT JOIN events e ON a.event_id = e.id
+    WHERE a.id = ?
+    """
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, (alert_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def get_event_by_id(event_id: int, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Fetch a single telemetry event by ID."""
     path = db_path or settings.DATABASE_PATH
     sql = """
     SELECT
@@ -140,32 +232,13 @@ async def get_recent_events(limit: int = 100, db_path: Optional[str] = None) -> 
         severity, severity_confidence, cached, alert_dispatched,
         created_at
     FROM events
-    ORDER BY id DESC
-    LIMIT ?
+    WHERE id = ?
     """
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(sql, (limit,)) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
-
-
-async def get_recent_alerts(limit: int = 50, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetch recent alert records."""
-    path = db_path or settings.DATABASE_PATH
-    sql = """
-    SELECT
-        id, event_id, src_ip, dst_ip, threat_category, severity,
-        recipient, status, resend_id, error_message, created_at
-    FROM alerts
-    ORDER BY id DESC
-    LIMIT ?
-    """
-    async with aiosqlite.connect(path) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(sql, (limit,)) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+        async with db.execute(sql, (event_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
 
 
 async def get_stats(db_path: Optional[str] = None) -> Dict[str, Any]:

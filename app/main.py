@@ -269,15 +269,43 @@ async def get_dashboard_stats() -> Dict[str, Any]:
 
 
 @app.get("/api/events")
-async def get_events(limit: int = Query(default=50, ge=1, le=500)) -> List[Dict[str, Any]]:
-    """Retrieve recent network events evaluated by Jev."""
-    return await database.get_recent_events(limit=limit)
+async def get_events(
+    limit: int = Query(default=50, ge=1, le=500),
+    threats_only: bool = Query(default=False),
+    category: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+) -> List[Dict[str, Any]]:
+    """Retrieve recent network events evaluated by Jev with optional category/threat/search filtering."""
+    return await database.get_recent_events(
+        limit=limit,
+        threats_only=threats_only,
+        category=category,
+        search=search,
+    )
 
 
 @app.get("/api/alerts")
 async def get_alerts(limit: int = Query(default=30, ge=1, le=200)) -> List[Dict[str, Any]]:
     """Retrieve recent alerts dispatched or throttled."""
     return await database.get_recent_alerts(limit=limit)
+
+
+@app.get("/api/alerts/{alert_id}")
+async def get_alert_detail(alert_id: int) -> Dict[str, Any]:
+    """Retrieve comprehensive details of a specific alert with associated telemetry log."""
+    alert = await database.get_alert_by_id(alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert record not found")
+    return alert
+
+
+@app.get("/api/events/{event_id}")
+async def get_event_detail(event_id: int) -> Dict[str, Any]:
+    """Retrieve comprehensive details of a specific evaluated network event."""
+    event = await database.get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event log record not found")
+    return event
 
 
 @app.post("/api/simulate")

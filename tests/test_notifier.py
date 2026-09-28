@@ -36,18 +36,27 @@ def test_generate_alert_html():
 
 
 @pytest.mark.asyncio
+@respx.mock
 async def test_alert_cooldown_throttling(tmp_path):
     db_file = str(tmp_path / "test_notifier.db")
     await database.init_db(db_file)
     settings.DATABASE_PATH = db_file
 
+    respx.post("https://api.resend.com/emails").respond(
+        status_code=200, json={"id": "mock_test_email_cooldown"}
+    )
+
     fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     event = {
         "src_ip": "10.0.0.99",
         "dst_ip": "198.51.100.1",
+        "dst_port": 80,
+        "protocol": "TCP",
         "threat_category": "exploit_attempt",
         "severity": 4.0,
         "is_suspicious": 0.99,
+        "payload_snippet": "GET /api/test?id=1",
+        "entropy": 3.5,
         "id": 1,
     }
 

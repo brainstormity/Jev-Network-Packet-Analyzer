@@ -28,63 +28,72 @@ def generate_alert_html(event: Dict[str, Any]) -> str:
 
     severity_color = "#ef4444" if severity >= 3.5 else "#f97316"
 
+    # Inline styles for cross-client email rendering (specifically Desktop Gmail PC)
+    td_label_style = "padding: 9px 12px; border-bottom: 1px solid #374151; color: #94a3b8; font-weight: 600; width: 35%; font-size: 13px;"
+    td_val_style = "padding: 9px 12px; border-bottom: 1px solid #374151; color: #f8fafc; font-family: 'JetBrains Mono', Consolas, Monaco, monospace; font-size: 13px;"
+    link_style = "color: #38bdf8 !important; text-decoration: none !important; font-weight: 600;"
+
     return f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
       <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>NetworkSentinel Threat Alert</title>
       <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f1f5f9; padding: 20px; margin: 0; }}
         .card {{ max-width: 620px; margin: 0 auto; background-color: #111827; border: 1px solid #1f2937; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
-        .header {{ background-color: #1e1b4b; border-bottom: 2px solid {severity_color}; padding: 24px; text-align: left; }}
-        .badge {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; background-color: {severity_color}; color: #ffffff; }}
-        .title {{ font-size: 20px; font-weight: 700; margin: 12px 0 4px 0; color: #ffffff; }}
-        .subtitle {{ font-size: 13px; color: #94a3b8; }}
-        .content {{ padding: 24px; }}
-        .metrics-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }}
-        .metric-box {{ background-color: #1f2937; padding: 12px; border-radius: 6px; }}
-        .metric-label {{ font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600; }}
-        .metric-value {{ font-size: 16px; font-weight: 700; color: #f8fafc; margin-top: 4px; }}
-        .table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }}
-        .table td {{ padding: 8px 12px; border-bottom: 1px solid #374151; }}
-        .table td:first-child {{ color: #94a3b8; font-weight: 600; width: 35%; }}
-        .table td:last-child {{ color: #f1f5f9; font-family: monospace; }}
-        .payload {{ background-color: #030712; border: 1px solid #1f2937; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #38bdf8; word-break: break-all; white-space: pre-wrap; }}
-        .footer {{ padding: 16px 24px; background-color: #0f172a; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #1f2937; }}
+        a, a:visited, a:hover, a:active {{ color: #38bdf8 !important; text-decoration: none !important; }}
       </style>
     </head>
-    <body>
-      <div class="card">
-        <div class="header">
-          <span class="badge">Critical Threat Level: {severity:.1f} / 4.0</span>
-          <div class="title">🚨 Jev AI Detected: {category}</div>
-          <div class="subtitle">NetworkSentinel Automated Telemetry Triage</div>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f1f5f9; padding: 20px; margin: 0;">
+      <div class="card" style="max-width: 620px; margin: 0 auto; background-color: #111827; border: 1px solid #1f2937; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+        <div style="background-color: #1e1b4b; border-bottom: 2px solid {severity_color}; padding: 24px; text-align: left;">
+          <span style="display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; background-color: {severity_color}; color: #ffffff;">Critical Threat Level: {severity:.1f} / 4.0</span>
+          <div style="font-size: 20px; font-weight: 700; margin: 12px 0 4px 0; color: #ffffff;">🚨 Jev AI Detected: {category}</div>
+          <div style="font-size: 13px; color: #94a3b8;">NetworkSentinel Automated Telemetry Triage</div>
         </div>
-        <div class="content">
-          <div class="metrics-grid">
-            <div class="metric-box">
-              <div class="metric-label">Risk Severity Score</div>
-              <div class="metric-value" style="color: {severity_color};">{severity:.2f} / 4.0</div>
-            </div>
-            <div class="metric-box">
-              <div class="metric-label">Suspicious Probability</div>
-              <div class="metric-value" style="color: #38bdf8;">{is_suspicious:.1f}%</div>
-            </div>
-          </div>
-
-          <table class="table">
-            <tr><td>Source IP</td><td>{src_ip}</td></tr>
-            <tr><td>Destination</td><td>{dst_ip}:{dst_port}</td></tr>
-            <tr><td>Protocol</td><td>{protocol}</td></tr>
-            <tr><td>Domain / SNI</td><td>{domain}</td></tr>
-            <tr><td>Payload Entropy</td><td>{entropy:.2f} / 8.0</td></tr>
+        <div style="padding: 24px;">
+          <table style="width: 100%; border-collapse: separate; border-spacing: 12px 0; margin-bottom: 20px;">
+            <tr>
+              <td style="width: 50%; background-color: #1f2937; padding: 12px; border-radius: 6px; border: 1px solid #374151;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Risk Severity Score</div>
+                <div style="font-size: 18px; font-weight: 700; color: {severity_color}; margin-top: 4px;">{severity:.2f} / 4.0</div>
+              </td>
+              <td style="width: 50%; background-color: #1f2937; padding: 12px; border-radius: 6px; border: 1px solid #374151;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Suspicious Probability</div>
+                <div style="font-size: 18px; font-weight: 700; color: #38bdf8; margin-top: 4px;">{is_suspicious:.1f}%</div>
+              </td>
+            </tr>
           </table>
 
-          <div style="font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 6px;">PAYLOAD SNIPPET</div>
-          <div class="payload">{snippet}</div>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+            <tr>
+              <td style="{td_label_style}">Source IP</td>
+              <td style="{td_val_style}"><span style="color: #f8fafc; font-weight: 600;">{src_ip}</span> <span style="font-size: 11px; color: #94a3b8; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">(Internal LAN)</span></td>
+            </tr>
+            <tr>
+              <td style="{td_label_style}">Destination</td>
+              <td style="{td_val_style}"><a href="http://{dst_ip}:{dst_port}" style="{link_style}">{dst_ip}:{dst_port}</a></td>
+            </tr>
+            <tr>
+              <td style="{td_label_style}">Protocol</td>
+              <td style="{td_val_style}"><span style="color: #f8fafc; font-weight: 600;">{protocol}</span></td>
+            </tr>
+            <tr>
+              <td style="{td_label_style}">Domain / SNI</td>
+              <td style="{td_val_style}"><a href="http://{domain}" style="{link_style}">{domain}</a></td>
+            </tr>
+            <tr>
+              <td style="{td_label_style}">Payload Entropy</td>
+              <td style="{td_val_style}"><span style="color: #f8fafc; font-weight: 600;">{entropy:.2f}</span> <span style="color: #94a3b8;">/ 8.0</span></td>
+            </tr>
+          </table>
+
+          <div style="font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">PAYLOAD SNIPPET</div>
+          <div style="background-color: #030712; border: 1px solid #1f2937; padding: 14px; border-radius: 6px; font-family: 'JetBrains Mono', Consolas, Monaco, monospace; font-size: 12px; color: #38bdf8; word-break: break-all; white-space: pre-wrap; line-height: 1.5;">{snippet}</div>
         </div>
-        <div class="footer">
+        <div style="padding: 16px 24px; background-color: #0f172a; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #1f2937;">
           Dispatched by NetworkSentinel (Jev System One Edition) &bull; 5-min cooldown active for this source & threat
         </div>
       </div>
@@ -242,51 +251,45 @@ def generate_startup_html() -> str:
     interface = html.escape(settings.CAPTURE_INTERFACE or "Auto-Detect")
     recipient = html.escape(settings.ALERT_RECIPIENT)
 
+    td_label_style = "padding: 9px 12px; border-bottom: 1px solid #374151; color: #94a3b8; font-weight: 600; width: 38%; font-size: 13px;"
+    td_val_style = "padding: 9px 12px; border-bottom: 1px solid #374151; color: #f8fafc; font-family: 'JetBrains Mono', Consolas, Monaco, monospace; font-size: 13px;"
+
     return f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
       <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>NetworkSentinel Online</title>
       <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f1f5f9; padding: 20px; margin: 0; }}
         .card {{ max-width: 620px; margin: 0 auto; background-color: #111827; border: 1px solid #1f2937; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
-        .header {{ background-color: #064e3b; border-bottom: 2px solid #10b981; padding: 24px; text-align: left; }}
-        .badge {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; background-color: #10b981; color: #022c22; }}
-        .title {{ font-size: 20px; font-weight: 700; margin: 12px 0 4px 0; color: #ffffff; }}
-        .subtitle {{ font-size: 13px; color: #a7f3d0; }}
-        .content {{ padding: 24px; }}
-        .intro-box {{ background-color: #1e293b; border-left: 4px solid #10b981; padding: 14px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; color: #e2e8f0; line-height: 1.5; }}
-        .table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }}
-        .table td {{ padding: 9px 12px; border-bottom: 1px solid #374151; }}
-        .table td:first-child {{ color: #94a3b8; font-weight: 600; width: 38%; }}
-        .table td:last-child {{ color: #f1f5f9; font-family: monospace; }}
-        .footer {{ padding: 16px 24px; background-color: #0f172a; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #1f2937; }}
+        a, a:visited, a:hover, a:active {{ color: #10b981 !important; text-decoration: none !important; }}
       </style>
     </head>
-    <body>
-      <div class="card">
-        <div class="header">
-          <span class="badge">&#10003; SYSTEM ONLINE</span>
-          <div class="title">&#128737;&#65039; NetworkSentinel Started Successfully</div>
-          <div class="subtitle">TypeSafe AI Jev System One Edition</div>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f1f5f9; padding: 20px; margin: 0;">
+      <div class="card" style="max-width: 620px; margin: 0 auto; background-color: #111827; border: 1px solid #1f2937; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+        <div style="background-color: #064e3b; border-bottom: 2px solid #10b981; padding: 24px; text-align: left;">
+          <span style="display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; background-color: #10b981; color: #022c22;">&#10003; SYSTEM ONLINE</span>
+          <div style="font-size: 20px; font-weight: 700; margin: 12px 0 4px 0; color: #ffffff;">&#128737;&#65039; NetworkSentinel Started Successfully</div>
+          <div style="font-size: 13px; color: #a7f3d0;">TypeSafe AI Jev System One Edition</div>
         </div>
-        <div class="content">
-          <div class="intro-box">
+        <div style="padding: 24px;">
+          <div style="background-color: #1e293b; border-left: 4px solid #10b981; padding: 14px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; color: #e2e8f0; line-height: 1.5;">
             This automated email confirms that <strong>NetworkSentinel</strong> is now actively running and your <strong>Resend email service is verified and fully operational</strong>. You will receive immediate notifications whenever high-severity threats or anomalies are detected.
           </div>
 
-          <table class="table">
-            <tr><td>Monitoring Interface</td><td>{interface}</td></tr>
-            <tr><td>BPF Kernel Filter</td><td>{bpf}</td></tr>
-            <tr><td>Decision Model</td><td>{model}</td></tr>
-            <tr><td>Rate Limit Pacer</td><td>&le; 18 req/sec (Token Bucket)</td></tr>
-            <tr><td>Deduplication Window</td><td>1 Hour (TTL: 3600s)</td></tr>
-            <tr><td>Alert Cooldown</td><td>5 Minutes Anti-Spam</td></tr>
-            <tr><td>Alert Recipient</td><td>{recipient}</td></tr>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+            <tr><td style="{td_label_style}">Monitoring Interface</td><td style="{td_val_style}">{interface}</td></tr>
+            <tr><td style="{td_label_style}">BPF Kernel Filter</td><td style="{td_val_style}">{bpf}</td></tr>
+            <tr><td style="{td_label_style}">Decision Model</td><td style="{td_val_style}">{model}</td></tr>
+            <tr><td style="{td_label_style}">Rate Limit Pacer</td><td style="{td_val_style}">&le; 18 req/sec (Token Bucket)</td></tr>
+            <tr><td style="{td_label_style}">Deduplication Window</td><td style="{td_val_style}">1 Hour (TTL: 3600s)</td></tr>
+            <tr><td style="{td_label_style}">Alert Cooldown</td><td style="{td_val_style}">5 Minutes Anti-Spam</td></tr>
+            <tr><td style="{td_label_style}">Alert Recipient</td><td style="{td_val_style}">{recipient}</td></tr>
           </table>
         </div>
-        <div class="footer">
+        <div style="padding: 16px 24px; background-color: #0f172a; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #1f2937;">
           NetworkSentinel Automated Security Notification &bull; Resend Dispatch Engine
         </div>
       </div>

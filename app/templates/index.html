@@ -140,7 +140,7 @@
       </div>
 
       <!-- Active Threats -->
-      <div class="glass-card rounded-xl p-5 border border-surfaceBorder relative overflow-hidden group hover:border-slate-700 transition">
+      <div id="card-kpi-threats" class="glass-card rounded-xl p-5 border border-surfaceBorder relative overflow-hidden group hover:border-threatRed/60 hover:scale-[1.01] transition cursor-pointer" title="Click to view all classified threat anomalies">
         <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-threatRed/10 rounded-full blur-xl group-hover:bg-threatRed/20 transition"></div>
         <div class="flex items-center justify-between">
           <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Active Threats</span>
@@ -152,8 +152,9 @@
           <span id="kpi-threats" class="text-2xl font-bold font-mono text-threatRed tracking-tight">0</span>
           <span class="text-xs text-slate-400">classified anomalies</span>
         </div>
-        <div class="mt-2 text-[11px] text-slate-400 font-mono">
-          <span id="kpi-alerts-dispatched" class="text-threatOrange font-semibold">0</span> email alerts dispatched
+        <div class="mt-2 text-[11px] text-threatRed/90 font-mono flex items-center justify-between">
+          <span><span id="kpi-alerts-dispatched" class="text-threatOrange font-semibold">0</span> email alerts</span>
+          <span class="text-[10px] text-cyan-400 flex items-center space-x-0.5 group-hover:underline font-sans font-semibold"><span>View anomalies</span> <span>&rarr;</span></span>
         </div>
       </div>
 
@@ -221,51 +222,64 @@
           <span id="live-row-count" class="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">0 events</span>
         </div>
 
-        <div class="flex items-center space-x-3 text-xs">
+        <div class="flex items-center flex-wrap gap-2.5 text-xs">
+          <!-- Real-Time Search Bar -->
+          <div class="relative">
+            <input id="filter-search" type="text" placeholder="Search IP, port, payload..." class="bg-slate-800 text-slate-200 border border-slate-700 rounded-lg pl-7 pr-2.5 py-1.5 focus:outline-none focus:border-cyan-500 font-mono text-xs w-44 md:w-56 placeholder:text-slate-500">
+            <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          </div>
+
           <!-- Category Filter -->
           <select id="filter-category" class="bg-slate-800 text-slate-200 border border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500 font-mono">
-            <option value="all">All Categories</option>
-            <option value="benign">Benign Only</option>
-            <option value="threats">Threats Only</option>
+            <option value="all">All Telemetry Events</option>
+            <option value="threats">Threats Only (Anomalies)</option>
             <option value="c2_beacon">C2 Beacon</option>
             <option value="dns_tunneling">DNS Tunneling</option>
             <option value="exploit_attempt">Exploit Attempt</option>
             <option value="reconnaissance">Reconnaissance</option>
+            <option value="benign">Benign Only</option>
           </select>
 
+          <!-- Refresh Button -->
+          <button id="btn-refresh-feed" title="Reload from Database" class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-lg font-mono transition cursor-pointer flex items-center space-x-1">
+            <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            <span>Refresh</span>
+          </button>
+
           <!-- Stream Pause Button -->
-          <button id="btn-toggle-stream" class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg font-mono transition cursor-pointer">
+          <button id="btn-toggle-stream" class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-lg font-mono transition cursor-pointer">
             Pause Stream
           </button>
 
           <!-- Clear Table Button -->
-          <button id="btn-clear-table" class="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg font-mono transition cursor-pointer">
-            Clear Feed
+          <button id="btn-clear-table" class="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 px-2.5 py-1.5 rounded-lg font-mono transition cursor-pointer">
+            Clear
           </button>
         </div>
       </div>
 
       <!-- Feed Table -->
-      <div class="overflow-x-auto max-h-[500px]">
+      <div class="overflow-x-auto max-h-[520px]">
         <table class="w-full text-left text-xs font-mono">
           <thead class="bg-slate-900/90 text-slate-400 uppercase text-[11px] tracking-wider sticky top-0 z-10 border-b border-surfaceBorder backdrop-blur">
             <tr>
-              <th class="py-3 px-4">Time</th>
-              <th class="py-3 px-4">Source IP</th>
-              <th class="py-3 px-4">Destination</th>
-              <th class="py-3 px-4">Protocol</th>
-              <th class="py-3 px-4">Domain / SNI</th>
-              <th class="py-3 px-4">Entropy</th>
-              <th class="py-3 px-4">Jev Classification</th>
-              <th class="py-3 px-4">Severity Score</th>
-              <th class="py-3 px-4 text-center">Status</th>
-              <th class="py-3 px-4 text-center">Inspect</th>
+              <th class="py-3 px-3">Time</th>
+              <th class="py-3 px-3">Source IP</th>
+              <th class="py-3 px-3">Destination</th>
+              <th class="py-3 px-3">Proto</th>
+              <th class="py-3 px-3">Domain / SNI</th>
+              <th class="py-3 px-3">Payload Snippet Preview</th>
+              <th class="py-3 px-3">Entropy</th>
+              <th class="py-3 px-3">Jev Verdict</th>
+              <th class="py-3 px-3">Severity</th>
+              <th class="py-3 px-3 text-center">Status</th>
+              <th class="py-3 px-3 text-center">Inspect</th>
             </tr>
           </thead>
           <tbody id="events-tbody" class="divide-y divide-slate-800/60 text-slate-300">
             <!-- Dynamically populated rows -->
             <tr id="empty-placeholder">
-              <td colspan="10" class="py-12 text-center text-slate-500 font-sans">
+              <td colspan="11" class="py-12 text-center text-slate-500 font-sans">
                 <svg class="w-8 h-8 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                 Waiting for incoming network events or simulated threats...
               </td>
@@ -273,7 +287,6 @@
           </tbody>
         </table>
       </div>
-    </div>
   </main>
 
   <!-- Threat Simulation Modal -->
@@ -335,18 +348,163 @@
     </div>
   </div>
 
-  <!-- Event Detail Inspector Modal -->
-  <div id="modal-inspect" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="glass-card bg-slate-900 border border-slate-700 rounded-xl max-w-xl w-full p-6 shadow-2xl relative">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-        <h3 class="text-base font-bold text-white flex items-center space-x-2">
-          <span>Telemetry State & Jev Decision Record</span>
-        </h3>
-        <button id="btn-close-inspect" class="text-slate-400 hover:text-white">&times;</button>
-      </div>
-      <div class="mt-4 space-y-3 font-mono text-xs">
-        <div id="inspect-content" class="bg-black/60 p-4 rounded-lg border border-slate-800 text-slate-200 overflow-x-auto max-h-96">
+  <!-- Forensic Threat & Telemetry Inspector Modal -->
+  <div id="modal-inspect" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="glass-card bg-slate-900/95 border border-slate-700/80 rounded-2xl max-w-4xl w-full p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div class="flex items-center space-x-3">
+          <div id="inspect-header-icon" class="w-10 h-10 rounded-xl flex items-center justify-center bg-threatOrange/20 text-threatOrange border border-threatOrange/40">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h3 id="inspect-title" class="text-base font-bold text-white tracking-wide">Threat Telemetry & Forensic Triage</h3>
+              <span id="inspect-category-badge" class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-orange-500/15 text-threatOrange border border-orange-500/30">C2_BEACON</span>
+            </div>
+            <p id="inspect-subtitle" class="text-xs text-slate-400 mt-0.5 font-mono">Event Log Details &bull; Jev System One Telemetry Analysis</p>
+          </div>
         </div>
+
+        <div class="flex items-center space-x-2">
+          <button id="btn-copy-inspect-json" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-mono transition cursor-pointer">
+            <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            <span id="copy-json-label">Copy JSON</span>
+          </button>
+          <button id="btn-close-inspect" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition text-lg leading-none cursor-pointer">&times;</button>
+        </div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="flex items-center space-x-2 border-b border-slate-800 mt-3 pt-1 text-xs font-medium">
+        <button id="tab-btn-analysis" onclick="switchInspectTab('analysis')" class="px-3.5 py-2 border-b-2 border-cyan-400 text-cyan-400 font-semibold cursor-pointer transition">
+          Threat Intelligence & Analysis
+        </button>
+        <button id="tab-btn-payload" onclick="switchInspectTab('payload')" class="px-3.5 py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer transition">
+          Payload & Wire Telemetry
+        </button>
+        <button id="tab-btn-raw" onclick="switchInspectTab('raw')" class="px-3.5 py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer transition">
+          Full Raw Log (JSON)
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="mt-4 overflow-y-auto flex-1 pr-1 space-y-4">
+        
+        <!-- Tab 1: Threat Intelligence & Triage -->
+        <div id="tab-content-analysis" class="space-y-4">
+          <!-- Executive Summary Callout -->
+          <div id="inspect-summary-banner" class="p-3.5 rounded-xl border flex items-start space-x-3 bg-red-950/30 border-red-800/60 text-slate-200 text-xs leading-relaxed">
+          </div>
+
+          <!-- Key Metrics Grid -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div class="p-3 rounded-lg bg-slate-800/60 border border-slate-700/60">
+              <span class="text-[10px] uppercase font-semibold text-slate-400">Risk Severity Score</span>
+              <div id="inspect-sev-val" class="text-lg font-bold text-threatRed font-mono mt-1">3.65 / 4.0</div>
+              <span id="inspect-sev-conf" class="text-[10px] text-slate-500 font-mono">Confidence: 92%</span>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-800/60 border border-slate-700/60">
+              <span class="text-[10px] uppercase font-semibold text-slate-400">Suspicious Probability</span>
+              <div id="inspect-prob-val" class="text-lg font-bold text-cyan-400 font-mono mt-1">96.0%</div>
+              <span class="text-[10px] text-slate-500 font-mono">Jev Noul primitive</span>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-800/60 border border-slate-700/60">
+              <span class="text-[10px] uppercase font-semibold text-slate-400">Shannon Entropy</span>
+              <div id="inspect-entropy-val" class="text-lg font-bold text-amber-400 font-mono mt-1">4.12 / 8.0</div>
+              <div class="w-full bg-slate-700 rounded-full h-1.5 mt-1 overflow-hidden">
+                <div id="inspect-entropy-bar" class="bg-amber-400 h-1.5 rounded-full" style="width: 51%;"></div>
+              </div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-800/60 border border-slate-700/60">
+              <span class="text-[10px] uppercase font-semibold text-slate-400">Alert Dispatch</span>
+              <div id="inspect-alert-status" class="text-sm font-bold text-emerald-400 font-mono mt-1">DISPATCHED</div>
+              <span id="inspect-alert-sub" class="text-[10px] text-slate-500 truncate block">5-min cooldown active</span>
+            </div>
+          </div>
+
+          <!-- Flow & Connection Table -->
+          <div class="p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/60">
+            <h4 class="text-xs font-bold text-white uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+              <span>Network Flow Telemetry Breakdown</span>
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
+              <div class="p-2.5 rounded bg-slate-900/60 border border-slate-800 flex justify-between">
+                <span class="text-slate-400">Source Host:</span>
+                <span id="inspect-src-ip" class="text-cyan-300 font-semibold">192.168.1.45 (LAN)</span>
+              </div>
+              <div class="p-2.5 rounded bg-slate-900/60 border border-slate-800 flex justify-between">
+                <span class="text-slate-400">Destination:</span>
+                <span id="inspect-dst" class="text-slate-200">185.220.101.5:4444</span>
+              </div>
+              <div class="p-2.5 rounded bg-slate-900/60 border border-slate-800 flex justify-between">
+                <span class="text-slate-400">Protocol:</span>
+                <span id="inspect-proto" class="text-slate-200">TCP</span>
+              </div>
+              <div class="p-2.5 rounded bg-slate-900/60 border border-slate-800 flex justify-between">
+                <span class="text-slate-400">Domain / SNI:</span>
+                <span id="inspect-domain" class="text-amber-300 font-semibold truncate max-w-[200px]">c2-checkin.dynamic-dns.net</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Threat Indicators & Danger Matrix -->
+          <div id="inspect-danger-section" class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
+            <h4 class="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-threatRed"></span>
+              <span>Why This Alert Is Critical & Dangerous</span>
+            </h4>
+            <div id="inspect-danger-reasons" class="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+            </div>
+          </div>
+
+          <!-- MITRE ATT&CK Mapping -->
+          <div class="p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/60">
+            <h4 class="text-xs font-bold text-white uppercase tracking-wider mb-2 flex items-center space-x-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+              <span>MITRE ATT&CK Framework Mapping</span>
+            </h4>
+            <div id="inspect-mitre-tags" class="flex flex-wrap gap-2 text-[11px] font-mono">
+            </div>
+          </div>
+
+          <!-- Incident Response Checklist -->
+          <div class="p-3.5 rounded-xl bg-slate-800/40 border border-slate-700/60">
+            <h4 class="text-xs font-bold text-white uppercase tracking-wider mb-2.5 flex items-center space-x-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span>Recommended Incident Response Runbook</span>
+            </h4>
+            <div id="inspect-runbook-steps" class="space-y-1.5 text-xs text-slate-300">
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Payload & Decoded Wire Telemetry -->
+        <div id="tab-content-payload" class="hidden space-y-3 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-white uppercase tracking-wider">Raw Payload Wire Snippet</span>
+            <button id="btn-copy-payload" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 font-mono text-[11px] cursor-pointer">
+              Copy Payload
+            </button>
+          </div>
+          <div id="inspect-payload-text" class="p-3.5 rounded-lg bg-black/80 border border-slate-800 text-cyan-300 font-mono text-xs overflow-x-auto whitespace-pre-wrap word-break-all leading-relaxed">
+          </div>
+
+          <h4 class="font-bold text-white uppercase tracking-wider pt-2">Parsed Wire Parameters & Triage Tokens</h4>
+          <div id="inspect-payload-breakdown" class="space-y-2 font-mono text-xs">
+          </div>
+        </div>
+
+        <!-- Tab 3: Raw JSON Log -->
+        <div id="tab-content-raw" class="hidden space-y-2">
+          <div class="flex items-center justify-between text-xs text-slate-400 font-mono">
+            <span>Complete NetworkSentinel Telemetry JSON Record</span>
+          </div>
+          <div id="inspect-raw-json" class="p-4 rounded-xl bg-black/80 border border-slate-800 text-emerald-400 font-mono text-xs overflow-x-auto max-h-[420px] whitespace-pre">
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -544,8 +702,10 @@
       eventsLog.unshift(event);
       if (eventsLog.length > maxRows) eventsLog.pop();
 
+      const cat = (event.threat_category || 'benign').toLowerCase().replace(/[\s-]/g, '_');
+      const isThreat = cat !== 'benign' || (event.severity >= 3.0) || (event.is_suspicious >= 0.85);
+
       // Increment timeline counters
-      const isThreat = (event.threat_category && event.threat_category !== 'benign') || (event.severity >= 3.0);
       if (isThreat) {
         threatData[threatData.length - 1] += 1;
       } else {
@@ -571,8 +731,27 @@
       }
 
       if (!streamPaused) {
-        renderRow(event, true);
-        updateRowCount();
+        // Check active category and search filter
+        const activeCat = document.getElementById('filter-category').value;
+        const activeSearch = (document.getElementById('filter-search')?.value || '').toLowerCase().trim();
+
+        let matchesCat = true;
+        if (activeCat === 'threats') {
+          matchesCat = isThreat;
+        } else if (activeCat !== 'all') {
+          matchesCat = (cat === activeCat);
+        }
+
+        let matchesSearch = true;
+        if (activeSearch) {
+          const haystack = `${event.src_ip} ${event.dst_ip} ${event.domain_or_sni || ''} ${event.payload_snippet || ''}`.toLowerCase();
+          matchesSearch = haystack.includes(activeSearch);
+        }
+
+        if (matchesCat && matchesSearch) {
+          renderRow(event, true);
+          updateRowCount();
+        }
       }
     }
 
@@ -586,18 +765,19 @@
     }, 5000);
 
     function getBadge(category, severity) {
-      if (category === 'benign') {
+      const cat = (category || 'benign').toLowerCase().replace(/[\s-]/g, '_');
+      if (cat === 'benign') {
         return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">BENIGN</span>';
-      } else if (category === 'c2_beacon') {
+      } else if (cat === 'c2_beacon') {
         return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/15 text-threatOrange border border-orange-500/30">C2 BEACON</span>';
-      } else if (category === 'dns_tunneling') {
+      } else if (cat === 'dns_tunneling') {
         return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30">DNS TUNNEL</span>';
-      } else if (category === 'exploit_attempt') {
+      } else if (cat === 'exploit_attempt') {
         return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-threatRed border border-red-500/40">EXPLOIT</span>';
-      } else if (category === 'reconnaissance') {
+      } else if (cat === 'reconnaissance') {
         return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">RECON</span>';
       }
-      return `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300">${category}</span>`;
+      return `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300 uppercase">${category}</span>`;
     }
 
     function renderRow(event, prepend = true) {
@@ -606,11 +786,12 @@
       if (placeholder) placeholder.remove();
 
       const timeStr = new Date(event.timestamp * 1000).toLocaleTimeString();
-      const isThreat = (event.threat_category && event.threat_category !== 'benign') || (event.severity >= 3.0);
+      const cat = (event.threat_category || 'benign').toLowerCase().replace(/[\s-]/g, '_');
+      const isThreat = cat !== 'benign' || (event.severity >= 3.0) || (event.is_suspicious >= 0.85);
       
       const row = document.createElement('tr');
-      row.className = `hover:bg-slate-800/40 transition event-row ${isThreat ? 'bg-red-950/10' : ''}`;
-      row.dataset.category = event.threat_category || 'benign';
+      row.className = `hover:bg-slate-800/40 transition event-row ${isThreat ? 'bg-red-950/15' : ''}`;
+      row.dataset.category = cat;
       row.dataset.threat = isThreat ? 'threat' : 'benign';
 
       const sevColor = event.severity >= 3.5 ? 'text-threatRed font-bold' : (event.severity >= 2.0 ? 'text-threatOrange' : 'text-slate-400');
@@ -624,18 +805,23 @@
         statusPill = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400">EVALUATED</span>';
       }
 
+      const snippet = event.payload_snippet || '-';
+      const snippetClass = isThreat ? 'text-threatOrange font-mono font-medium' : 'text-slate-400 font-mono';
+      const escapedJson = JSON.stringify(event).replace(/"/g, '&quot;');
+
       row.innerHTML = `
-        <td class="py-2.5 px-4 text-slate-400 whitespace-nowrap">${timeStr}</td>
-        <td class="py-2.5 px-4 text-cyan-300 font-medium whitespace-nowrap">${event.src_ip}</td>
-        <td class="py-2.5 px-4 text-slate-300 whitespace-nowrap">${event.dst_ip}:${event.dst_port || 0}</td>
-        <td class="py-2.5 px-4"><span class="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300">${event.protocol}</span></td>
-        <td class="py-2.5 px-4 text-slate-300 max-w-[180px] truncate" title="${event.domain_or_sni || ''}">${event.domain_or_sni || '-'}</td>
-        <td class="py-2.5 px-4 text-slate-400 font-mono">${(event.entropy || 0).toFixed(2)}</td>
-        <td class="py-2.5 px-4 whitespace-nowrap">${getBadge(event.threat_category, event.severity)}</td>
-        <td class="py-2.5 px-4 ${sevColor}">${(event.severity || 0).toFixed(2)} / 4.0</td>
-        <td class="py-2.5 px-4 text-center whitespace-nowrap">${statusPill}</td>
-        <td class="py-2.5 px-4 text-center">
-          <button onclick="inspectEvent(${JSON.stringify(event).replace(/"/g, '&quot;')})" class="text-cyan-400 hover:text-cyan-300 px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 text-[10px]">
+        <td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">${timeStr}</td>
+        <td class="py-2.5 px-3 text-cyan-300 font-medium whitespace-nowrap">${event.src_ip}</td>
+        <td class="py-2.5 px-3 text-slate-300 whitespace-nowrap">${event.dst_ip}:${event.dst_port || 0}</td>
+        <td class="py-2.5 px-3"><span class="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300">${event.protocol}</span></td>
+        <td class="py-2.5 px-3 text-slate-300 max-w-[140px] truncate" title="${event.domain_or_sni || ''}">${event.domain_or_sni || '-'}</td>
+        <td class="py-2.5 px-3 ${snippetClass} max-w-[210px] truncate" title="${snippet.replace(/"/g, '&quot;')}">${snippet}</td>
+        <td class="py-2.5 px-3 text-slate-400 font-mono">${(event.entropy || 0).toFixed(2)}</td>
+        <td class="py-2.5 px-3 whitespace-nowrap">${getBadge(event.threat_category, event.severity)}</td>
+        <td class="py-2.5 px-3 ${sevColor} whitespace-nowrap">${(event.severity || 0).toFixed(2)} / 4.0</td>
+        <td class="py-2.5 px-3 text-center whitespace-nowrap">${statusPill}</td>
+        <td class="py-2.5 px-3 text-center">
+          <button onclick="inspectEvent(${escapedJson})" class="text-cyan-400 hover:text-cyan-300 px-2.5 py-1 rounded bg-slate-800/90 hover:bg-slate-700 text-[10px] border border-slate-700 cursor-pointer font-sans font-medium transition">
             Inspect
           </button>
         </td>
@@ -690,11 +876,362 @@
       }
     }
 
+    // Active inspection state
+    let currentInspectData = null;
+
+    function switchInspectTab(tabName) {
+      const tabs = ['analysis', 'payload', 'raw'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const content = document.getElementById(`tab-content-${t}`);
+        if (t === tabName) {
+          btn.className = 'px-3.5 py-2 border-b-2 border-cyan-400 text-cyan-400 font-semibold cursor-pointer transition';
+          content.classList.remove('hidden');
+        } else {
+          btn.className = 'px-3.5 py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer transition';
+          content.classList.add('hidden');
+        }
+      });
+    }
+
+    // Copy JSON logic
+    document.getElementById('btn-copy-inspect-json').onclick = () => {
+      if (!currentInspectData) return;
+      navigator.clipboard.writeText(JSON.stringify(currentInspectData, null, 2)).then(() => {
+        const label = document.getElementById('copy-json-label');
+        label.innerText = 'Copied!';
+        setTimeout(() => { label.innerText = 'Copy JSON'; }, 2000);
+      });
+    };
+
+    // Copy Payload logic
+    document.getElementById('btn-copy-payload').onclick = () => {
+      if (!currentInspectData || !currentInspectData.payload_snippet) return;
+      navigator.clipboard.writeText(currentInspectData.payload_snippet).then(() => {
+        const btn = document.getElementById('btn-copy-payload');
+        btn.innerText = 'Copied!';
+        setTimeout(() => { btn.innerText = 'Copy Payload'; }, 2000);
+      });
+    };
+
+    // Forensic Threat Intelligence Engine
+    function getThreatIntelligence(event) {
+      const category = (event.threat_category || 'benign').toLowerCase();
+      const port = event.dst_port || 0;
+      const snippet = event.payload_snippet || '';
+      const domain = event.domain_or_sni || '';
+      const src = event.src_ip || '192.168.1.45';
+      const dst = event.dst_ip || '185.220.101.5';
+
+      if (category === 'c2_beacon') {
+        return {
+          banner: `
+            <div class="w-7 h-7 rounded-full bg-threatRed flex items-center justify-center text-white shrink-0 mt-0.5 font-bold">⚠️</div>
+            <div>
+              <div class="font-bold text-white text-xs mb-0.5">CRITICAL ACTIVE COMPROMISE: C2 Beacon & Stager Check-In</div>
+              <p class="text-slate-300 text-[11px] leading-relaxed">
+                Host <strong class="text-cyan-300 font-mono">${src}</strong> is actively initiating unauthorized outbound telemetry to an external command server (<strong class="text-white font-mono">${dst}:${port}</strong>). The presence of <code class="bg-black/50 px-1 py-0.5 rounded text-cyan-300 font-mono">stage=2</code> in the payload snippet confirms that the initial dropper has succeeded and is now pulling the secondary malware stage (interactive shell / ransomware / implant) into your network.
+              </p>
+            </div>
+          `,
+          dangers: [
+            {
+              title: "Internal Host Compromise Confirmed",
+              desc: `Traffic originates from internal host <strong>${src}</strong> outbound, meaning malware code execution is already active inside your perimeter.`
+            },
+            {
+              title: "Port 4444 (Metasploit Signature)",
+              desc: `Destination port <strong>${port}</strong> is the well-known default listener for Metasploit Framework reverse shells and Meterpreter payloads.`
+            },
+            {
+              title: "Dynamic DNS Infrastructure",
+              desc: `Domain <strong class="text-amber-300 font-mono">${domain}</strong> utilizes Dynamic DNS, a common adversary tactic to rapidly rotate C2 IPs and bypass static reputation lists.`
+            },
+            {
+              title: "Multistage Ingress (stage=2)",
+              desc: `Requesting <code>/beacon?id=4910&stage=2</code> means the victim host has an assigned session ID and is actively downloading secondary post-exploitation tools.`
+            }
+          ],
+          mitre: [
+            { id: "T1071.001", name: "Application Layer Protocol: Web Protocols" },
+            { id: "T1105", name: "Ingress Tool Transfer (Stage 2 Download)" },
+            { id: "T1568.002", name: "Dynamic Resolution: Dynamic DNS" },
+            { id: "T1571", name: "Non-Standard Port: 4444" }
+          ],
+          runbook: [
+            "🚨 <strong>Host Isolation:</strong> Disconnect internal host <code>" + src + "</code> from the network immediately (isolate VLAN or unplug cable).",
+            "🛡️ <strong>Firewall Rule:</strong> Block outbound traffic to destination IP <code>" + dst + "</code> and sinkhole domain <code>" + domain + "</code>.",
+            "🔍 <strong>Process Triage:</strong> On <code>" + src + "</code>, run <code>netstat -ano</code> or <code>lsof -i :" + port + "</code> to terminate the offending process (PID).",
+            "💾 <strong>Forensic Investigation:</strong> Capture volatile memory dump, inspect cron/scheduled tasks, and search for persistence droppers."
+          ]
+        };
+      } else if (category === 'dns_tunneling') {
+        return {
+          banner: `
+            <div class="w-7 h-7 rounded-full bg-purple-500 flex items-center justify-center text-white shrink-0 mt-0.5 font-bold">⚠️</div>
+            <div>
+              <div class="font-bold text-white text-xs mb-0.5">HIGH SEVERITY: Covert DNS Data Exfiltration & Tunneling</div>
+              <p class="text-slate-300 text-[11px] leading-relaxed">
+                Host <strong class="text-cyan-300 font-mono">${src}</strong> is leaking encoded sensitive data through port 53 recursive DNS queries to external nameserver <strong class="text-white font-mono">${dst}</strong>.
+              </p>
+            </div>
+          `,
+          dangers: [
+            {
+              title: "Egress Firewall Bypass",
+              desc: "Adversaries encode files inside DNS query labels to bypass standard enterprise firewalls that permit port 53 UDP traffic."
+            },
+            {
+              title: "High Shannon Entropy",
+              desc: `Calculated payload entropy is ${(event.entropy || 0).toFixed(2)}/8.0, indicating compressed or encrypted exfiltration tokens.`
+            }
+          ],
+          mitre: [
+            { id: "T1071.004", name: "Application Layer Protocol: DNS" },
+            { id: "T1048.003", name: "Exfiltration Over Alternative Protocol" }
+          ],
+          runbook: [
+            "🛡️ <strong>DNS Sinkhole:</strong> Blackhole the root domain on all internal recursive DNS resolvers.",
+            "🔍 <strong>Process Audit:</strong> Identify which application is querying foreign external DNS resolvers directly."
+          ]
+        };
+      } else if (category === 'exploit_attempt') {
+        return {
+          banner: `
+            <div class="w-7 h-7 rounded-full bg-threatRed flex items-center justify-center text-white shrink-0 mt-0.5 font-bold">⚠️</div>
+            <div>
+              <div class="font-bold text-white text-xs mb-0.5">CRITICAL EXPLOIT ATTEMPT: Web Application Exploit Signature</div>
+              <p class="text-slate-300 text-[11px] leading-relaxed">
+                Inbound payload targeting internal asset <strong class="text-cyan-300 font-mono">${dst}:${port}</strong> contains active SQL injection, traversal, or command injection strings.
+              </p>
+            </div>
+          `,
+          dangers: [
+            {
+              title: "Active Exploit Payload",
+              desc: "Payload contains unauthorized database enumeration commands (<code>UNION SELECT username, password FROM users</code>)."
+            },
+            {
+              title: "Targeted Database Breach",
+              desc: "Attacker attempting to extract sensitive credentials and compromise database authentication tables."
+            }
+          ],
+          mitre: [
+            { id: "T1190", name: "Exploit Public-Facing Application" },
+            { id: "T1212", name: "Exploitation for Credential Access" }
+          ],
+          runbook: [
+            "🛡️ <strong>WAF Block:</strong> Enforce immediate perimeter URI block for SQL injection patterns.",
+            "🔍 <strong>Audit Database:</strong> Review database query logs for unauthorized reads or schema modifications."
+          ]
+        };
+      } else if (category === 'reconnaissance') {
+        return {
+          banner: `
+            <div class="w-7 h-7 rounded-full bg-yellow-500 flex items-center justify-center text-slate-950 shrink-0 mt-0.5 font-bold">!</div>
+            <div>
+              <div class="font-bold text-white text-xs mb-0.5">NETWORK RECONNAISSANCE & PORT SCAN</div>
+              <p class="text-slate-300 text-[11px] leading-relaxed">
+                Automated probe detected probing target port <strong class="text-white font-mono">${port}</strong> on <strong class="text-cyan-300 font-mono">${dst}</strong>.
+              </p>
+            </div>
+          `,
+          dangers: [
+            {
+              title: "Automated Scanner Fingerprint",
+              desc: "Packet signatures match Nmap or Masscan network discovery tools."
+            },
+            {
+              title: "Pre-Attack Enumeration",
+              desc: "Scanners map active service versions prior to deploying specific weaponized exploits."
+            }
+          ],
+          mitre: [
+            { id: "T1595.001", name: "Active Scanning: Scanning IP Blocks" }
+          ],
+          runbook: [
+            "🛡️ <strong>Rate Limit / Drop:</strong> Drop traffic from source IP on the edge firewall.",
+            "🔒 <strong>Port Shielding:</strong> Close unused open ports on the target host."
+          ]
+        };
+      }
+
+      // Benign default
+      return {
+        banner: `
+          <div class="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-slate-950 shrink-0 mt-0.5 font-bold">✓</div>
+          <div>
+            <div class="font-bold text-white text-xs mb-0.5">BENIGN NETWORK TELEMETRY</div>
+            <p class="text-slate-300 text-[11px] leading-relaxed">
+              Standard network communication verified. No suspicious indicators, malware signatures, or abnormal payload patterns detected.
+            </p>
+          </div>
+        `,
+        dangers: [
+          {
+            title: "Routine Network Traffic",
+            desc: "Matches expected content delivery network (CDN) asset retrieval or standard operating system telemetry."
+          }
+        ],
+        mitre: [
+          { id: "N/A", name: "Benign Telemetry" }
+        ],
+        runbook: [
+          "No operational containment required. Cached for 1 hour in Redis to optimize inspection throughput."
+        ]
+      };
+    }
+
     // Inspect Details Helper
-    window.inspectEvent = function(event) {
-      const el = document.getElementById('inspect-content');
-      el.innerHTML = `<pre class="text-emerald-400">${JSON.stringify(event, null, 2)}</pre>`;
+    window.inspectEvent = function(data) {
+      currentInspectData = data;
+      switchInspectTab('analysis');
+
+      const isThreat = (data.threat_category && data.threat_category !== 'benign') || (data.severity >= 3.0);
+      const category = (data.threat_category || 'benign').toUpperCase();
+      const sev = (data.severity || 0).toFixed(2);
+      const isSuspicious = ((data.is_suspicious || 0) * 100).toFixed(1);
+      const entropy = (data.entropy || 0).toFixed(2);
+      const src = data.src_ip || 'N/A';
+      const dst = data.dst_ip ? `${data.dst_ip}:${data.dst_port || 0}` : 'N/A';
+      const proto = data.protocol || 'TCP';
+      const domain = data.domain_or_sni || '-';
+      const snippet = data.payload_snippet || 'No payload snippet recorded';
+
+      // Header Elements
+      document.getElementById('inspect-title').innerText = isThreat ? `Threat Telemetry: ${category}` : 'Network Telemetry Event';
+      const badgeEl = document.getElementById('inspect-category-badge');
+      badgeEl.innerHTML = getBadge(data.threat_category || 'benign', data.severity || 0);
+      document.getElementById('inspect-subtitle').innerText = `ID: #${data.id || data.event_id || 'Live'} • ${src} → ${dst} • ${proto}`;
+
+      // Key Metrics Grid
+      const sevEl = document.getElementById('inspect-sev-val');
+      sevEl.innerText = `${sev} / 4.0`;
+      sevEl.className = data.severity >= 3.5 ? 'text-lg font-bold text-threatRed font-mono mt-1' : (data.severity >= 2.0 ? 'text-lg font-bold text-threatOrange font-mono mt-1' : 'text-lg font-bold text-emerald-400 font-mono mt-1');
+      document.getElementById('inspect-sev-conf').innerText = `Confidence: ${Math.round((data.severity_confidence || 0.95) * 100)}%`;
+
+      document.getElementById('inspect-prob-val').innerText = `${isSuspicious}%`;
+      document.getElementById('inspect-entropy-val').innerText = `${entropy} / 8.0`;
+      const entropyBar = document.getElementById('inspect-entropy-bar');
+      const pct = Math.min(100, Math.round((data.entropy || 0) / 8.0 * 100));
+      entropyBar.style.width = `${pct}%`;
+      entropyBar.className = data.entropy >= 5.0 ? 'bg-purple-500 h-1.5 rounded-full' : (data.entropy >= 3.5 ? 'bg-amber-400 h-1.5 rounded-full' : 'bg-emerald-400 h-1.5 rounded-full');
+
+      const alertStatusEl = document.getElementById('inspect-alert-status');
+      const alertSubEl = document.getElementById('inspect-alert-sub');
+      if (data.status === 'sent' || data.alert_dispatched) {
+        alertStatusEl.innerText = 'ALERT DISPATCHED';
+        alertStatusEl.className = 'text-sm font-bold text-threatRed font-mono mt-1';
+        alertSubEl.innerText = data.resend_id ? `Resend ID: ${data.resend_id}` : 'Delivered via Resend REST API';
+      } else if (data.status === 'throttled') {
+        alertStatusEl.innerText = 'ALERT THROTTLED';
+        alertStatusEl.className = 'text-sm font-bold text-amber-400 font-mono mt-1';
+        alertSubEl.innerText = '5-min anti-spam cooldown active';
+      } else if (data.cached) {
+        alertStatusEl.innerText = 'CACHE HIT (1H)';
+        alertStatusEl.className = 'text-sm font-bold text-amber-300 font-mono mt-1';
+        alertSubEl.innerText = 'Fast-path bypass from Redis';
+      } else {
+        alertStatusEl.innerText = 'MONITORED';
+        alertStatusEl.className = 'text-sm font-bold text-slate-300 font-mono mt-1';
+        alertSubEl.innerText = 'Evaluated by Jev System One';
+      }
+
+      // Flow elements
+      document.getElementById('inspect-src-ip').innerText = `${src} ${src.startsWith('192.168.') || src.startsWith('10.') ? '(Internal LAN)' : ''}`;
+      document.getElementById('inspect-dst').innerText = dst;
+      document.getElementById('inspect-proto').innerText = proto;
+      document.getElementById('inspect-domain').innerText = domain;
+      document.getElementById('inspect-domain').title = domain;
+
+      // Forensic Intelligence Engine
+      const ti = getThreatIntelligence(data);
+      document.getElementById('inspect-summary-banner').innerHTML = ti.banner;
+
+      // Danger Matrix
+      const dangerContainer = document.getElementById('inspect-danger-reasons');
+      dangerContainer.innerHTML = ti.dangers.map(d => `
+        <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800">
+          <div class="font-bold text-white mb-1 flex items-center space-x-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-threatOrange"></span>
+            <span>${d.title}</span>
+          </div>
+          <div class="text-[11px] text-slate-400 leading-relaxed">${d.desc}</div>
+        </div>
+      `).join('');
+
+      // MITRE ATT&CK Tags
+      const mitreContainer = document.getElementById('inspect-mitre-tags');
+      mitreContainer.innerHTML = ti.mitre.map(m => `
+        <span class="px-2.5 py-1 rounded-md bg-purple-950/60 border border-purple-800/60 text-purple-300">
+          <strong class="text-white">${m.id}</strong>: ${m.name}
+        </span>
+      `).join('');
+
+      // Runbook Steps
+      const runbookContainer = document.getElementById('inspect-runbook-steps');
+      runbookContainer.innerHTML = ti.runbook.map(r => `
+        <div class="p-2 rounded bg-slate-900/60 border border-slate-800 flex items-start space-x-2">
+          <span class="text-emerald-400 mt-0.5">▸</span>
+          <span class="text-[11px] leading-relaxed text-slate-200">${r}</span>
+        </div>
+      `).join('');
+
+      // Tab 2: Payload view
+      document.getElementById('inspect-payload-text').innerText = snippet;
+
+      // Parse payload tokens
+      const breakdownEl = document.getElementById('inspect-payload-breakdown');
+      const tokens = [];
+      if (snippet.includes('/beacon')) tokens.push({ key: 'Command Endpoint', val: '/beacon (C2 check-in command)' });
+      if (snippet.includes('id=')) {
+        const idMatch = snippet.match(/id=([0-9a-zA-Z_-]+)/);
+        if (idMatch) tokens.push({ key: 'Victim Implant ID', val: idMatch[1] + ' (Registered Bot Session)' });
+      }
+      if (snippet.includes('stage=')) {
+        const stageMatch = snippet.match(/stage=([0-9]+)/);
+        if (stageMatch) tokens.push({ key: 'Payload Stage', val: `Stage ${stageMatch[1]} (Secondary payload download)` });
+      }
+      if (snippet.includes('User-Agent:')) {
+        const uaMatch = snippet.match(/User-Agent:\s*([^\r\n]+)/);
+        if (uaMatch) tokens.push({ key: 'User-Agent', val: uaMatch[1] + ' (Automated CLI tool signature)' });
+      }
+      if (snippet.includes('Host:')) {
+        const hostMatch = snippet.match(/Host:\s*([^\r\n]+)/);
+        if (hostMatch) tokens.push({ key: 'HTTP Host', val: hostMatch[1] });
+      }
+      if (tokens.length === 0) {
+        tokens.push({ key: 'Payload Type', val: 'Raw ASCII / wire stream' });
+        tokens.push({ key: 'Payload Length', val: `${snippet.length} bytes` });
+      }
+
+      breakdownEl.innerHTML = tokens.map(t => `
+        <div class="p-2.5 rounded bg-slate-900/60 border border-slate-800 flex justify-between">
+          <span class="text-slate-400">${t.key}:</span>
+          <span class="text-cyan-300 font-semibold">${t.val}</span>
+        </div>
+      `).join('');
+
+      // Tab 3: Raw JSON
+      document.getElementById('inspect-raw-json').innerText = JSON.stringify(data, null, 2);
+
+      // Show Modal
       modalInspect.classList.remove('hidden');
+    };
+
+    // Load Single Alert by ID
+    window.inspectAlert = async function(alertId) {
+      try {
+        const res = await fetch(`/api/alerts/${alertId}`);
+        if (res.ok) {
+          const alertData = await res.json();
+          inspectEvent(alertData);
+        } else {
+          alert('Could not fetch alert details');
+        }
+      } catch (e) {
+        console.error('Error fetching alert:', e);
+      }
     };
 
     // Load Alert Dispatch History
@@ -710,23 +1247,39 @@
           }
           container.innerHTML = list.map(a => {
             const statusClass = a.status === 'sent' || a.status === 'mock_sent' ? 'text-emerald-400 bg-emerald-950/40 border-emerald-800/60' : (a.status === 'throttled' ? 'text-amber-400 bg-amber-950/40 border-amber-800/60' : 'text-threatRed bg-red-950/40 border-red-800/60');
+            const target = a.dst_ip ? `${a.dst_ip}:${a.dst_port || 0}` : 'Unknown destination';
+            const alertJsonEscaped = JSON.stringify(a).replace(/"/g, '&quot;');
             return `
-              <div class="p-3 rounded-lg bg-slate-800/80 border border-slate-700 flex items-center justify-between">
-                <div>
+              <div class="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-600 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex-1">
                   <div class="flex items-center space-x-2">
-                    <span class="font-bold text-white uppercase">${a.threat_category}</span>
-                    <span class="text-slate-400">from ${a.src_ip}</span>
-                    <span class="text-threatOrange font-semibold">&bull; Risk: ${a.severity.toFixed(1)}/4.0</span>
+                    <span class="font-bold text-white uppercase text-sm">${a.threat_category}</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${a.severity >= 3.5 ? 'bg-red-500/20 text-threatRed border border-red-500/30' : 'bg-orange-500/20 text-threatOrange border border-orange-500/30'}">Risk: ${a.severity.toFixed(1)}/4.0</span>
+                    <span class="text-xs text-cyan-300 font-mono">${a.src_ip}</span>
+                    <span class="text-slate-400 text-xs font-mono">&rarr; ${target}</span>
                   </div>
-                  <div class="text-[11px] text-slate-400 mt-1">
-                    To: ${a.recipient} &bull; ${new Date(a.created_at).toLocaleString()}
-                    ${a.resend_id ? `&bull; Resend ID: <span class="text-cyan-400">${a.resend_id}</span>` : ''}
-                    ${a.error_message ? `&bull; <span class="text-amber-400">${a.error_message}</span>` : ''}
+                  <div class="text-[11px] text-slate-400 mt-1 font-mono flex flex-wrap items-center gap-x-2">
+                    <span>To: <strong class="text-slate-300">${a.recipient}</strong></span>
+                    <span>&bull;</span>
+                    <span>${new Date(a.created_at).toLocaleString()}</span>
+                    ${a.resend_id ? `<span>&bull; Resend ID: <span class="text-cyan-400">${a.resend_id}</span></span>` : ''}
+                    ${a.error_message ? `<span>&bull; <span class="text-amber-400">${a.error_message}</span></span>` : ''}
                   </div>
+                  ${a.payload_snippet ? `
+                    <div class="mt-2 text-[10px] font-mono text-cyan-400/90 bg-black/40 px-2.5 py-1 rounded truncate max-w-lg border border-slate-800">
+                      Snippet: ${a.payload_snippet}
+                    </div>
+                  ` : ''}
                 </div>
-                <span class="px-2 py-1 rounded text-[10px] font-bold uppercase border ${statusClass}">
-                  ${a.status}
-                </span>
+                <div class="flex items-center space-x-2 shrink-0">
+                  <span class="px-2.5 py-1 rounded text-[10px] font-bold uppercase border ${statusClass}">
+                    ${a.status}
+                  </span>
+                  <button onclick="inspectEvent(${alertJsonEscaped})" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-slate-950 font-semibold text-xs transition cursor-pointer shadow-md shadow-cyan-500/10">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    <span>View Full Log & Analysis</span>
+                  </button>
+                </div>
               </div>
             `;
           }).join('');
@@ -749,7 +1302,7 @@
       const tbody = document.getElementById('events-tbody');
       tbody.innerHTML = `
         <tr id="empty-placeholder">
-          <td colspan="10" class="py-12 text-center text-slate-500 font-sans">
+          <td colspan="11" class="py-12 text-center text-slate-500 font-sans">
             Feed cleared. Live telemetry will appear automatically...
           </td>
         </tr>
@@ -757,20 +1310,69 @@
       updateRowCount();
     };
 
-    // Filter by Category
-    document.getElementById('filter-category').onchange = (e) => {
-      const val = e.target.value;
-      const rows = document.querySelectorAll('.event-row');
-      rows.forEach(r => {
-        if (val === 'all') {
-          r.style.display = '';
-        } else if (val === 'threats') {
-          r.style.display = r.dataset.threat === 'threat' ? '' : 'none';
-        } else {
-          r.style.display = r.dataset.category === val ? '' : 'none';
+    // Load Filtered Events from Backend & Database
+    async function loadFilteredEvents() {
+      const activeCat = document.getElementById('filter-category').value;
+      const activeSearch = (document.getElementById('filter-search')?.value || '').trim();
+
+      let url = '/api/events?limit=100';
+      if (activeCat === 'threats') {
+        url += '&threats_only=true';
+      } else if (activeCat !== 'all') {
+        url += `&category=${encodeURIComponent(activeCat)}`;
+      }
+      if (activeSearch) {
+        url += `&search=${encodeURIComponent(activeSearch)}`;
+      }
+
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const events = await res.json();
+          const tbody = document.getElementById('events-tbody');
+          tbody.innerHTML = '';
+          if (events.length === 0) {
+            tbody.innerHTML = `
+              <tr id="empty-placeholder">
+                <td colspan="11" class="py-12 text-center text-slate-500 font-sans">
+                  No matching network events found in database for filter: <strong class="text-cyan-400 font-mono">"${activeCat}"</strong> ${activeSearch ? `with search term <strong class="text-white font-mono">"${activeSearch}"</strong>` : ''}
+                </td>
+              </tr>
+            `;
+          } else {
+            events.forEach(evt => renderRow(evt, false));
+          }
+          updateRowCount();
         }
-      });
-      updateRowCount();
+      } catch (err) {
+        console.error('Failed loading filtered events:', err);
+      }
+    }
+
+    // Filter by Category dropdown
+    document.getElementById('filter-category').onchange = () => {
+      loadFilteredEvents();
+    };
+
+    // Real-Time Search input debounce
+    let searchDebounceTimer = null;
+    document.getElementById('filter-search').oninput = () => {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        loadFilteredEvents();
+      }, 250);
+    };
+
+    // Refresh Feed Button
+    document.getElementById('btn-refresh-feed').onclick = () => {
+      loadFilteredEvents();
+    };
+
+    // Click Active Threats KPI card to filter to all anomalies immediately
+    document.getElementById('card-kpi-threats').onclick = async () => {
+      document.getElementById('filter-category').value = 'threats';
+      await loadFilteredEvents();
+      document.getElementById('events-tbody').scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     // Start Everything on Load

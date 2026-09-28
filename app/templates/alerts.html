@@ -653,60 +653,147 @@
       const domain = event.domain_or_sni || '';
 
       if (category === 'c2_beacon') {
+        const snippet = event.payload_snippet || '';
+        const isSimOrStager = snippet.includes('stage=2') || snippet.includes('beacon') || event.is_simulated;
+        const isMetasploitPort = port === 4444 || port === 1337 || port === 31337;
+        const isWebPort = port === 443 || port === 8443;
+        const entropyVal = (event.entropy || 0).toFixed(2);
+
+        let bannerTitle = "C2 BEACON: Suspicious Outbound Telemetry";
+        let bannerText = "";
+
+        if (isSimOrStager) {
+          bannerTitle = "CRITICAL ACTIVE COMPROMISE: C2 Beacon & Stager Check-In";
+          bannerText = `Host <strong class="text-cyan-300 font-mono">${src}</strong> is actively initiating unauthorized outbound telemetry to an external command server (<strong class="text-white font-mono">${dst}:${port}</strong>). The payload matches known C2 dropper / stager heartbeat patterns.`;
+        } else if (isWebPort) {
+          bannerTitle = "SUSPICIOUS OUTBOUND TELEMETRY: Unverified Encrypted Session";
+          bannerText = `Host <strong class="text-cyan-300 font-mono">${src}</strong> initiated an outbound session to <strong class="text-white font-mono">${dst}:${port}</strong> with high Shannon entropy (${entropyVal}/8.0) and unverified domain identity.`;
+        } else {
+          bannerTitle = "HIGH RISK: Non-Standard Outbound Beaconing";
+          bannerText = `Host <strong class="text-cyan-300 font-mono">${src}</strong> initiated outbound communication to <strong class="text-white font-mono">${dst}:${port}</strong> over non-standard egress port ${port}.`;
+        }
+
+        const dangers = [
+          {
+            title: "Outbound Host Origin",
+            desc: `Traffic originates from internal host <strong>${src}</strong> outbound to external destination <strong>${dst}</strong>.`
+          }
+        ];
+
+        if (isMetasploitPort) {
+          dangers.push({
+            title: `Port ${port} (Known Reverse Shell Listener)`,
+            desc: `Destination port <strong>${port}</strong> is a well-known default listener for reverse shells, Netcat, and Meterpreter payloads.`
+          });
+        } else if (isWebPort) {
+          dangers.push({
+            title: `Encrypted Transport (Port ${port})`,
+            desc: `Outbound session uses encrypted transport (HTTPS/QUIC) with high entropy (${entropyVal}/8.0), bypassing static packet inspection.`
+          });
+        } else {
+          dangers.push({
+            title: `Non-Standard Egress Port (${port})`,
+            desc: `Outbound traffic routed through non-standard egress port <strong>${port}</strong>.`
+          });
+        }
+
+        if (domain && domain.length > 0) {
+          dangers.push({
+            title: "External Domain Infrastructure",
+            desc: `Outbound destination resolved to <strong class="text-amber-300 font-mono">${domain}</strong>.`
+          });
+        } else {
+          dangers.push({
+            title: "Direct IP Communication (Missing SNI)",
+            desc: `Connection communicates directly to IP <strong class="text-white font-mono">${dst}</strong> without standard Server Name Indication (SNI).`
+          });
+        }
+
+        if (snippet.includes('stage=2')) {
+          dangers.push({
+            title: "Multistage Ingress (stage=2)",
+            desc: `Requesting <code>stage=2</code> confirms the host is retrieving secondary post-exploitation modules or payload implants.`
+          });
+        } else if (snippet.includes('beacon') || snippet.includes('uuid')) {
+          dangers.push({
+            title: "C2 Check-in Identifier",
+            desc: `Payload contains beaconing tokens or periodic check-in identifier.`
+          });
+        }
+
+        const mitre = [
+          { id: "T1071.001", name: "Application Layer Protocol: Web Protocols" }
+        ];
+        if (snippet.includes('stage=2')) mitre.push({ id: "T1105", name: "Ingress Tool Transfer (Stage 2 Download)" });
+        if (domain && (domain.includes('dns') || domain.includes('ngrok'))) mitre.push({ id: "T1568.002", name: "Dynamic Resolution: Dynamic DNS" });
+        if (isMetasploitPort) mitre.push({ id: "T1571", name: `Non-Standard Port: ${port}` });
+
         return {
           banner: `
             <div class="p-3.5 rounded-lg bg-orange-950/40 border border-orange-800/60 flex items-start space-x-3">
               <span class="text-xl">⚠️</span>
               <div>
-                <div class="font-bold text-white text-xs mb-0.5">CRITICAL ACTIVE COMPROMISE: C2 Beacon & Stager Check-In</div>
+                <div class="font-bold text-white text-xs mb-0.5">${bannerTitle}</div>
                 <p class="text-slate-300 text-[11px] leading-relaxed">
-                  Host <strong class="text-cyan-300 font-mono">${src}</strong> initiated unauthorized outbound telemetry to an external command server (<strong class="text-white font-mono">${dst}:${port}</strong>).
+                  ${bannerText}
                 </p>
               </div>
             </div>
           `,
-          dangers: [
-            { title: "Command & Control Established", desc: `Outbound connection to known C2 port ${port} indicates active backdoor presence.` },
-            { title: "Dynamic DNS Infrastructure", desc: `Adversary utilizes dynamic DNS (${domain}) to evade domain reputation filters.` }
-          ],
-          mitre: [
-            { id: "T1071.001", name: "Web Protocols (HTTP/HTTPS)" },
-            { id: "T1573", name: "Encrypted Channel" },
-            { id: "T1105", name: "Ingress Tool Transfer" }
-          ],
+          dangers: dangers,
+          mitre: mitre,
           runbook: [
-            "Quarantine host from internal VLAN.",
-            "Verify egress firewall rules for unauthorized ports.",
-            "Inspect process memory on the affected host for injected payloads."
+            "🚨 <strong>Host Isolation:</strong> Disconnect internal host <code>" + src + "</code> from the network if suspicious process is verified.",
+            "🛡️ <strong>Firewall Rule:</strong> Block outbound traffic to destination IP <code>" + dst + "</code>.",
+            "🔍 <strong>Process Triage:</strong> On <code>" + src + "</code>, run <code>lsof -i :" + port + "</code> or <code>netstat -ano</code> to identify the owning process.",
+            "💾 <strong>Forensic Investigation:</strong> Inspect active sockets, recent downloads, and persistence hooks."
           ]
         };
       }
 
       if (category === 'exploit_attempt') {
+        const snippet = event.payload_snippet || '';
+        const lowerSnip = snippet.toLowerCase();
+        let exploitType = "Web Application Exploit Signature";
+        let payloadDangerDesc = "Payload contains unauthorized injection or traversal strings.";
+
+        if (lowerSnip.includes('union') || lowerSnip.includes('select')) {
+          exploitType = "SQL Injection (SQLi) Attempt";
+          payloadDangerDesc = "Payload contains unauthorized SQL database enumeration commands (<code>UNION SELECT</code>).";
+        } else if (lowerSnip.includes('/etc/passwd') || lowerSnip.includes('../')) {
+          exploitType = "Path Traversal & Arbitrary File Read";
+          payloadDangerDesc = "Payload attempts to break directory boundaries and read sensitive system files (<code>/etc/passwd</code>).";
+        } else if (lowerSnip.includes('/bin/sh') || lowerSnip.includes('cmd.exe') || lowerSnip.includes('eval(')) {
+          exploitType = "Remote Code Execution (RCE) / Shell Probe";
+          payloadDangerDesc = "Payload contains shell execution primitives (<code>/bin/sh</code> or <code>eval</code>) attempting unauthorized command execution.";
+        } else if (lowerSnip.includes('<script>')) {
+          exploitType = "Cross-Site Scripting (XSS) Injection";
+          payloadDangerDesc = "Payload contains unescaped JavaScript tags (<code>&lt;script&gt;</code>) targeting client browsers.";
+        }
+
         return {
           banner: `
             <div class="p-3.5 rounded-lg bg-red-950/40 border border-red-800/60 flex items-start space-x-3">
               <span class="text-xl">🚨</span>
               <div>
-                <div class="font-bold text-white text-xs mb-0.5">ACTIVE WEB APPLICATION ATTACK / EXPLOITATION</div>
+                <div class="font-bold text-white text-xs mb-0.5">CRITICAL EXPLOIT ATTEMPT: ${exploitType}</div>
                 <p class="text-slate-300 text-[11px] leading-relaxed">
-                  Host <strong class="text-cyan-300 font-mono">${src}</strong> delivered malicious injection syntax targeting internal services.
+                  Inbound payload targeting internal asset <strong class="text-cyan-300 font-mono">${dst}:${port}</strong> contains active ${exploitType.toLowerCase()} signatures.
                 </p>
               </div>
             </div>
           `,
           dangers: [
-            { title: "Database Exfiltration Risk", desc: "SQL injection probes attempt unauthorized credential extraction." },
-            { title: "Remote Code Execution (RCE)", desc: "Web server command injection parameters detected in payload." }
+            { title: "Active Exploit Payload", desc: payloadDangerDesc },
+            { title: "Targeted Perimeter Breach", desc: "Attacker attempting to compromise runtime application components and escalate access." }
           ],
           mitre: [
             { id: "T1190", name: "Exploit Public-Facing Application" },
-            { id: "T1059.004", name: "Unix Shell Injection" }
+            { id: "T1059", name: "Command and Scripting Interpreter" }
           ],
           runbook: [
-            "Enable Web Application Firewall (WAF) blocking rule for the source IP.",
-            "Review database query parameterization on target endpoints.",
-            "Audit web server access logs for 200 OK responses to injected URLs."
+            "🛡️ <strong>WAF Block:</strong> Enforce immediate perimeter URI block for detected exploit patterns.",
+            "🔍 <strong>Audit Application:</strong> Inspect web application logs for HTTP response status codes and potential state change."
           ]
         };
       }

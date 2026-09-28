@@ -7,17 +7,20 @@
 [![TypeSafe AI](https://img.shields.io/badge/TypeSafe%20AI-Jev%20System%20One-6366f1.svg)](https://typesafe.ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**NetworkSentinel** is a lightweight, real-time network telemetry triage and threat detection system. It passively captures Layer 3/4 network traffic, filters noise in memory, buffers flows in Redis, evaluates anomalies using **TypeSafe AI's Jev** System One decision model, streams live telemetry to a cyber-styled dashboard over WebSockets, and dispatches containment alerts via **Resend**.
+**NetworkSentinel** is a lightweight, real-time network telemetry triage and threat detection system. It passively captures Layer 3/4 network traffic, filters noise in memory, buffers flows in Redis, evaluates anomalies using **TypeSafe AI's Jev** System One decision model, streams live telemetry to a cyber-styled dashboard over WebSockets, and dispatches containment email alerts via **Resend**.
 
 ![NetworkSentinel Architecture](architecture.jpeg)
 
 ---
 
-## ⚡ Core Features
+## Core Features
 
 * **Passive L3/L4 Capture**: Kernel BPF filtering and asynchronous packet processing powered by Scapy.
-* **L1 Deterministic Pre-Filter**: Bypasses encrypted TLS application data and zero-payload TCP packets, eliminating token waste and latency on benign traffic.
-* **Bidirectional Flow Caching**: Redis-backed flow pair caching delivers a **>99% cache hit ratio** for routine connections.
+* **Pre-Filter Pipeline (Zero Token Waste)**: 
+  * *Noise Elimination*: In-memory discard engine strips broadcast, loopback, and zero-payload TCP ACK chatter before queuing.
+  * *L1 Deterministic Pre-Filter*: Automatically bypasses encrypted TLS data streams, HTTP/3 (QUIC) UDP 443 packets, and major CDN subnets (Cloudflare, Google, Apple, AWS) as benign.
+  * *Bidirectional Flow Caching*: Redis-backed bidirectional flow tracking caches routine connections for 24 hours, delivering a **>99% cache hit ratio**.
+  * **Result**: Only genuine anomalies, unclassified payloads, or explicit threat signatures ever reach the AI decision engine.
 * **Jev System One AI Triage**: Evaluates suspicious probability (`is_suspicious`), threat category (`threat_category`), and operational risk score (`severity`).
 * **Real-Time SOC Dashboard (`/`)**: Live telemetry velocity charts, threat distribution doughnut, and instant packet inspection.
 * **Incident Dispatch Center (`/alerts`)**: Dedicated full-screen audit ledger with status tabs, search, and one-click Resend tracking.
@@ -26,7 +29,7 @@
 
 ---
 
-## 🚀 Quick Start: Choose Your Environment
+## Quick Start: Choose Your Environment
 
 NetworkSentinel captures **real physical network traffic** across three environments:
 
@@ -105,7 +108,7 @@ For detailed guides, architecture diagrams, and complete manuals, see [**docs.md
 
 ---
 
-## 🧪 Security Drills & CLI Testing
+## Security Drills & CLI Testing
 
 Run simulated cyber incidents to test detection and alerting without sending real attacks:
 
@@ -122,6 +125,30 @@ pytest -v
 
 ---
 
-## 📄 License
+## Project Vision & Roadmap
+
+NetworkSentinel began as a fast, fun weekend experiment to test how TypeSafe AI's Jev model handles real-world Layer 3/4 packet classification. The project is open-sourced under the MIT license so the security and developer community can fork, adapt, and build upon it:
+
+* **Local Model Implementation (Recommended for Privacy)**:  
+  While this proof-of-concept leverages the cloud-hosted TypeSafe Jev API, running network packet inspection on private infrastructure is best paired with a **local model** (e.g., via Ollama, vLLM, or llama.cpp). Swapping the cloud triage engine for a local SLM/LLM ensures that **zero telemetry ever leaves your home LAN or air-gapped network**.
+* **Isolated Attack Test Lab**:  
+  Plans are underway to deploy an isolated test network to systematically fire live exploit vectors, reverse shells, C2 implants, and DNS exfiltration tools to benchmark and stress-test detection accuracy and false-positive resilience.
+* **Community Customization**:  
+  Feel free to fork the repository, tailor the L1 pre-filters to your own homelab setup, hook in alternative notification providers, or plug in your own custom inference backends.
+
+---
+
+## Disclaimer & Responsible Use
+
+> ⚠️ **Important Notice**: This repository is an experimental proof-of-concept and research project intended strictly for educational, defensive research, and homelab experimentation.
+>
+> * **Do NOT rely on this software as a primary or production security system.** It is not an enterprise-certified Network Intrusion Detection System (NIDS) or SIEM.
+> * The author and contributors assume **no responsibility or liability** for any security incidents, missed detections, false alerts, compromised devices, or damages arising from the use or inability to use this software.
+> * Always implement industry-standard security practices, including network segmentation, endpoint antivirus, robust firewall policies, and regular patch management.
+
+---
+
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+

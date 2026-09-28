@@ -371,6 +371,7 @@ async def simulate_event(req: SimulatePacketRequest) -> Dict[str, Any]:
             status_code=400,
             detail=f"Unknown scenario '{req.scenario}'. Choose from: {list(scenarios.keys())}",
         )
+    packet_data["is_simulated"] = True
 
     # Push to Redis Raw Queue
     r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)

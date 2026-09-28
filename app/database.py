@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS events (
     severity_confidence REAL,
     cached INTEGER DEFAULT 0,
     alert_dispatched INTEGER DEFAULT 0,
+    is_simulated INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     status TEXT NOT NULL,
     resend_id TEXT,
     error_message TEXT,
+    is_simulated INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(event_id) REFERENCES events(id)
 );
@@ -56,6 +58,14 @@ async def init_db(db_path: Optional[str] = None) -> None:
     path = db_path or settings.DATABASE_PATH
     async with aiosqlite.connect(path) as db:
         await db.executescript(CREATE_TABLES_SQL)
+        try:
+            await db.execute("ALTER TABLE events ADD COLUMN is_simulated INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE alerts ADD COLUMN is_simulated INTEGER DEFAULT 0")
+        except Exception:
+            pass
         await db.commit()
     logger.info("Initialized database at %s", path)
 
@@ -68,12 +78,14 @@ async def save_event(event: Dict[str, Any], db_path: Optional[str] = None) -> in
         timestamp, protocol, src_ip, dst_ip, dst_port,
         domain_or_sni, payload_snippet, entropy,
         is_suspicious, threat_category, category_confidence,
-        severity, severity_confidence, cached, alert_dispatched
+        severity, severity_confidence, cached, alert_dispatched,
+        is_simulated
     ) VALUES (
         :timestamp, :protocol, :src_ip, :dst_ip, :dst_port,
         :domain_or_sni, :payload_snippet, :entropy,
         :is_suspicious, :threat_category, :category_confidence,
-        :severity, :severity_confidence, :cached, :alert_dispatched
+        :severity, :severity_confidence, :cached, :alert_dispatched,
+        :is_simulated
     )
     """
     params = {
@@ -92,6 +104,7 @@ async def save_event(event: Dict[str, Any], db_path: Optional[str] = None) -> in
         "severity_confidence": float(event.get("severity_confidence", 1.0)) if event.get("severity_confidence") is not None else 1.0,
         "cached": 1 if event.get("cached") else 0,
         "alert_dispatched": 1 if event.get("alert_dispatched") else 0,
+        "is_simulated": 1 if event.get("is_simulated") else 0,
     }
 
     async with aiosqlite.connect(path) as db:
@@ -106,10 +119,10 @@ async def save_alert(alert: Dict[str, Any], db_path: Optional[str] = None) -> in
     sql = """
     INSERT INTO alerts (
         event_id, src_ip, dst_ip, threat_category, severity,
-        recipient, status, resend_id, error_message
+        recipient, status, resend_id, error_message, is_simulated
     ) VALUES (
         :event_id, :src_ip, :dst_ip, :threat_category, :severity,
-        :recipient, :status, :resend_id, :error_message
+        :recipient, :status, :resend_id, :error_message, :is_simulated
     )
     """
     params = {
@@ -122,6 +135,7 @@ async def save_alert(alert: Dict[str, Any], db_path: Optional[str] = None) -> in
         "status": str(alert.get("status", "sent")),
         "resend_id": alert.get("resend_id"),
         "error_message": alert.get("error_message"),
+        "is_simulated": 1 if alert.get("is_simulated") else 0,
     }
 
     async with aiosqlite.connect(path) as db:
@@ -193,6 +207,7 @@ async def get_recent_events(
         domain_or_sni, payload_snippet, entropy,
         is_suspicious, threat_category, category_confidence,
         severity, severity_confidence, cached, alert_dispatched,
+        is_simulated,
         created_at
     FROM events
     {where_clause}
@@ -214,7 +229,9 @@ async def get_recent_alerts(limit: int = 50, db_path: Optional[str] = None) -> L
     sql = """
     SELECT
         a.id, a.event_id, a.src_ip, a.dst_ip, a.threat_category, a.severity,
-        a.recipient, a.status, a.resend_id, a.error_message, a.created_at,
+        a.recipient, a.status, a.resend_id, a.error_message,
+        COALESCE(a.is_simulated, e.is_simulated, 0) as is_simulated,
+        a.created_at,
         e.timestamp as event_timestamp, e.protocol, e.dst_port, e.domain_or_sni,
         e.payload_snippet, e.entropy, e.is_suspicious, e.category_confidence,
         e.severity_confidence, e.cached, e.alert_dispatched
@@ -236,7 +253,9 @@ async def get_alert_by_id(alert_id: int, db_path: Optional[str] = None) -> Optio
     sql = """
     SELECT
         a.id, a.event_id, a.src_ip, a.dst_ip, a.threat_category, a.severity,
-        a.recipient, a.status, a.resend_id, a.error_message, a.created_at,
+        a.recipient, a.status, a.resend_id, a.error_message,
+        COALESCE(a.is_simulated, e.is_simulated, 0) as is_simulated,
+        a.created_at,
         e.timestamp as event_timestamp, e.protocol, e.dst_port, e.domain_or_sni,
         e.payload_snippet, e.entropy, e.is_suspicious, e.category_confidence,
         e.severity_confidence, e.cached, e.alert_dispatched
@@ -260,6 +279,7 @@ async def get_event_by_id(event_id: int, db_path: Optional[str] = None) -> Optio
         domain_or_sni, payload_snippet, entropy,
         is_suspicious, threat_category, category_confidence,
         severity, severity_confidence, cached, alert_dispatched,
+        is_simulated,
         created_at
     FROM events
     WHERE id = ?

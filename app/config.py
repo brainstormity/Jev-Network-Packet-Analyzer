@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         description="Network interface name (e.g. eth0, en0). None for auto-detection.",
     )
     BPF_FILTER: str = Field(
-        default="ip and not net 127.0.0.0/8 and not udp port 5353 and not udp port 1900",
+        default="ip and not net 127.0.0.0/8 and not udp port 5353 and not udp port 1900 and not port 6379 and not port 8000",
         description="Berkeley Packet Filter string for Scapy",
     )
 

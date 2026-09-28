@@ -277,6 +277,7 @@ class JevWorker:
             "severity_confidence": severity_confidence,
             "cached": cached,
             "alert_dispatched": False,
+            "is_simulated": bool(state.get("is_simulated", False)),
         }
 
         # 2. Persist to SQLite

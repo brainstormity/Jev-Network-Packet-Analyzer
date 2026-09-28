@@ -77,6 +77,7 @@ async def inject_via_redis(scenario_name: str, count: int = 1, delay: float = 0.
         event = {
             **template,
             "timestamp": time.time(),
+            "is_simulated": True,
         }
         await r.lpush(settings.REDIS_RAW_QUEUE, json.dumps(event))
         await r.incr("net:stats:captured")

@@ -31,6 +31,7 @@ def generate_alert_html(event: Dict[str, Any]) -> str:
     domain = html.escape(str(event.get("domain_or_sni", "N/A")))
     entropy = event.get("entropy", 0.0)
     snippet = html.escape(str(event.get("payload_snippet", "No payload snippet available")))
+    is_simulated = bool(event.get("is_simulated", False))
 
     severity_color = "#ef4444" if severity >= 3.5 else "#f97316"
 
@@ -38,6 +39,14 @@ def generate_alert_html(event: Dict[str, Any]) -> str:
     td_label_style = "padding: 9px 12px; border-bottom: 1px solid #374151; color: #94a3b8; font-weight: 600; width: 35%; font-size: 13px;"
     td_val_style = "padding: 9px 12px; border-bottom: 1px solid #374151; color: #f8fafc; font-family: 'JetBrains Mono', Consolas, Monaco, monospace; font-size: 13px;"
     link_style = "color: #38bdf8 !important; text-decoration: none !important; font-weight: 600;"
+
+    simulated_banner = ""
+    if is_simulated:
+        simulated_banner = """
+        <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #ffffff; padding: 12px 16px; border-radius: 6px; font-weight: 700; text-align: center; margin-bottom: 20px; font-size: 13px; letter-spacing: 0.5px; border: 1px solid #8b5cf6;">
+          🧪 [SIMULATED DRILL] &bull; SYNTHETIC TEST TELEMETRY (Not a real network threat)
+        </div>
+        """
 
     return f"""
     <!DOCTYPE html>
@@ -60,6 +69,7 @@ def generate_alert_html(event: Dict[str, Any]) -> str:
           <div style="font-size: 13px; color: #94a3b8;">NetworkSentinel Automated Telemetry Triage</div>
         </div>
         <div style="padding: 24px;">
+          {simulated_banner}
           <table style="width: 100%; border-collapse: separate; border-spacing: 12px 0; margin-bottom: 20px;">
             <tr>
               <td style="width: 50%; background-color: #1f2937; padding: 12px; border-radius: 6px; border: 1px solid #374151;">
@@ -118,6 +128,7 @@ async def dispatch_alert(
     raw_category = str(event.get("threat_category", "unknown")).strip()
     threat_category = raw_category.lower()
     severity = float(event.get("severity", 0.0))
+    is_simulated = bool(event.get("is_simulated", False))
 
     cooldown_key = f"{settings.REDIS_ALERT_COOLDOWN_PREFIX}{src_ip}:{raw_category}"
     norm_cooldown_key = f"{settings.REDIS_ALERT_COOLDOWN_PREFIX}{src_ip}:{threat_category}"
@@ -181,6 +192,7 @@ async def dispatch_alert(
                     "status": "throttled",
                     "resend_id": None,
                     "error_message": "Suppressed by 5-minute deduplication cooldown",
+                    "is_simulated": 1 if is_simulated else 0,
                 }
             )
             return {"status": "throttled", "cooldown": True}
@@ -209,6 +221,7 @@ async def dispatch_alert(
                 "status": "mock_sent",
                 "resend_id": "mock_resend_id",
                 "error_message": None,
+                "is_simulated": 1 if is_simulated else 0,
             }
         )
         return {"status": "mock_sent", "alert_id": alert_id}
@@ -218,10 +231,11 @@ async def dispatch_alert(
         "Authorization": f"Bearer {settings.RESEND_API_KEY}",
         "Content-Type": "application/json",
     }
+    subject_prefix = "[SIMULATED DRILL] " if is_simulated else ""
     payload = {
         "from": f"Network Sentinel <{settings.RESEND_FROM_EMAIL}>",
         "to": [settings.ALERT_RECIPIENT],
-        "subject": f"🚨 [Alert] High Severity Threat Detected: {raw_category.upper()} (Risk: {severity:.1f}/4.0)",
+        "subject": f"🚨 {subject_prefix}High Severity Threat Detected: {raw_category.upper()} (Risk: {severity:.1f}/4.0)",
         "html": generate_alert_html(event),
     }
 
@@ -247,6 +261,7 @@ async def dispatch_alert(
                     "status": "sent",
                     "resend_id": resend_id,
                     "error_message": None,
+                    "is_simulated": 1 if is_simulated else 0,
                 }
             )
             return {"status": "sent", "resend_id": resend_id}
@@ -273,6 +288,7 @@ async def dispatch_alert(
                     "status": "failed",
                     "resend_id": None,
                     "error_message": f"HTTP {response.status_code}: {err_text[:200]}",
+                    "is_simulated": 1 if is_simulated else 0,
                 }
             )
             return {"status": "failed", "error": err_text}
@@ -298,6 +314,7 @@ async def dispatch_alert(
                 "status": "failed",
                 "resend_id": None,
                 "error_message": str(e),
+                "is_simulated": 1 if is_simulated else 0,
             }
         )
         return {"status": "failed", "error": str(e)}

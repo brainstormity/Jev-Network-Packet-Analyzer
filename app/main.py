@@ -19,6 +19,7 @@ import redis.asyncio as aioredis
 from app.capture import CaptureEngine
 from app.config import settings
 from app import database
+from app import notifier
 from app.worker import JevWorker
 
 logging.basicConfig(
@@ -124,6 +125,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 4. Start Redis Pub/Sub WebSocket Broadcaster
     pubsub_task = asyncio.create_task(redis_pubsub_listener(app))
     app.state.pubsub_task = pubsub_task
+
+    # 5. Dispatch one-time startup notification email to verify Resend service
+    asyncio.create_task(notifier.send_startup_notification())
 
     logger.info("NetworkSentinel services are online.")
     yield

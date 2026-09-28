@@ -233,3 +233,137 @@ async def dispatch_alert(
     finally:
         if own_client:
             await client.aclose()
+
+
+def generate_startup_html() -> str:
+    """Generate professional cyber-themed HTML email sent once when NetworkSentinel starts up."""
+    bpf = html.escape(settings.BPF_FILTER)
+    model = html.escape(settings.JEV_MODEL)
+    interface = html.escape(settings.CAPTURE_INTERFACE or "Auto-Detect")
+    recipient = html.escape(settings.ALERT_RECIPIENT)
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>NetworkSentinel Online</title>
+      <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f1f5f9; padding: 20px; margin: 0; }}
+        .card {{ max-width: 620px; margin: 0 auto; background-color: #111827; border: 1px solid #1f2937; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
+        .header {{ background-color: #064e3b; border-bottom: 2px solid #10b981; padding: 24px; text-align: left; }}
+        .badge {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; text-transform: uppercase; background-color: #10b981; color: #022c22; }}
+        .title {{ font-size: 20px; font-weight: 700; margin: 12px 0 4px 0; color: #ffffff; }}
+        .subtitle {{ font-size: 13px; color: #a7f3d0; }}
+        .content {{ padding: 24px; }}
+        .intro-box {{ background-color: #1e293b; border-left: 4px solid #10b981; padding: 14px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; color: #e2e8f0; line-height: 1.5; }}
+        .table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }}
+        .table td {{ padding: 9px 12px; border-bottom: 1px solid #374151; }}
+        .table td:first-child {{ color: #94a3b8; font-weight: 600; width: 38%; }}
+        .table td:last-child {{ color: #f1f5f9; font-family: monospace; }}
+        .footer {{ padding: 16px 24px; background-color: #0f172a; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #1f2937; }}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="header">
+          <span class="badge">&#10003; SYSTEM ONLINE</span>
+          <div class="title">&#128737;&#65039; NetworkSentinel Started Successfully</div>
+          <div class="subtitle">TypeSafe AI Jev System One Edition</div>
+        </div>
+        <div class="content">
+          <div class="intro-box">
+            This automated email confirms that <strong>NetworkSentinel</strong> is now actively running and your <strong>Resend email service is verified and fully operational</strong>. You will receive immediate notifications whenever high-severity threats or anomalies are detected.
+          </div>
+
+          <table class="table">
+            <tr><td>Monitoring Interface</td><td>{interface}</td></tr>
+            <tr><td>BPF Kernel Filter</td><td>{bpf}</td></tr>
+            <tr><td>Decision Model</td><td>{model}</td></tr>
+            <tr><td>Rate Limit Pacer</td><td>&le; 18 req/sec (Token Bucket)</td></tr>
+            <tr><td>Deduplication Window</td><td>1 Hour (TTL: 3600s)</td></tr>
+            <tr><td>Alert Cooldown</td><td>5 Minutes Anti-Spam</td></tr>
+            <tr><td>Alert Recipient</td><td>{recipient}</td></tr>
+          </table>
+        </div>
+        <div class="footer">
+          NetworkSentinel Automated Security Notification &bull; Resend Dispatch Engine
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+
+async def send_startup_notification(client: Optional[httpx.AsyncClient] = None) -> Dict[str, Any]:
+    """Send a single verification email via Resend when NetworkSentinel starts up."""
+    if not settings.is_resend_configured:
+        logger.info("[STARTUP] Resend not configured. Skipping startup notification email.")
+        return {"status": "skipped", "reason": "Resend API key not configured"}
+
+    logger.info("Dispatching system startup notification email to %s...", settings.ALERT_RECIPIENT)
+    headers = {
+        "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "from": f"Network Sentinel <{settings.RESEND_FROM_EMAIL}>",
+        "to": [settings.ALERT_RECIPIENT],
+        "subject": "🛡️ [NetworkSentinel] Telemetry Analyzer Online & Active",
+        "html": generate_startup_html(),
+    }
+
+    own_client = False
+    if client is None:
+        client = httpx.AsyncClient(timeout=10.0)
+        own_client = True
+
+    try:
+        await database.init_db()
+    except Exception:
+        pass
+
+    try:
+        response = await client.post(RESEND_API_URL, json=payload, headers=headers)
+        if response.status_code in (200, 201):
+            res_data = response.json()
+            resend_id = res_data.get("id", "")
+            logger.info("Startup notification email delivered successfully! Resend ID=%s", resend_id)
+            await database.save_alert(
+                {
+                    "event_id": None,
+                    "src_ip": "127.0.0.1",
+                    "dst_ip": "resend.com",
+                    "threat_category": "SYSTEM_STARTUP",
+                    "severity": 0.0,
+                    "recipient": settings.ALERT_RECIPIENT,
+                    "status": "sent",
+                    "resend_id": resend_id,
+                    "error_message": None,
+                }
+            )
+            return {"status": "sent", "resend_id": resend_id}
+        else:
+            err_text = response.text
+            logger.warning("Resend rejected startup email: HTTP %d %s", response.status_code, err_text)
+            await database.save_alert(
+                {
+                    "event_id": None,
+                    "src_ip": "127.0.0.1",
+                    "dst_ip": "resend.com",
+                    "threat_category": "SYSTEM_STARTUP",
+                    "severity": 0.0,
+                    "recipient": settings.ALERT_RECIPIENT,
+                    "status": "failed",
+                    "resend_id": None,
+                    "error_message": f"HTTP {response.status_code}: {err_text[:200]}",
+                }
+            )
+            return {"status": "failed", "error": err_text}
+    except Exception as e:
+        logger.error("Exception sending startup notification email: %s", e)
+        return {"status": "failed", "error": str(e)}
+    finally:
+        if own_client:
+            await client.aclose()
+

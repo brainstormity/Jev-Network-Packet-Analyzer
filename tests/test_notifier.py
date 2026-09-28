@@ -6,7 +6,12 @@ import httpx
 import respx
 
 from app.config import settings
-from app.notifier import dispatch_alert, generate_alert_html
+from app.notifier import (
+    dispatch_alert,
+    generate_alert_html,
+    generate_startup_html,
+    send_startup_notification,
+)
 from app import database
 
 
@@ -86,3 +91,33 @@ async def test_resend_api_dispatch_success(tmp_path):
         res = await dispatch_alert(event, fake_redis, client)
         assert res.get("status") == "sent"
         assert res.get("resend_id") == "email_abc_789"
+
+
+def test_generate_startup_html():
+    html_content = generate_startup_html()
+    assert "SYSTEM ONLINE" in html_content
+    assert "NetworkSentinel Started Successfully" in html_content
+    assert settings.ALERT_RECIPIENT in html_content
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_startup_notification_success(tmp_path):
+    db_file = str(tmp_path / "test_startup.db")
+    await database.init_db(db_file)
+    settings.DATABASE_PATH = db_file
+    settings.RESEND_API_KEY = "re_test_startup_key"
+
+    respx.post("https://api.resend.com/emails").respond(
+        status_code=200, json={"id": "startup_email_123"}
+    )
+
+    async with httpx.AsyncClient() as client:
+        res = await send_startup_notification(client)
+        assert res.get("status") == "sent"
+        assert res.get("resend_id") == "startup_email_123"
+
+    alerts = await database.get_recent_alerts(limit=5, db_path=db_file)
+    assert len(alerts) == 1
+    assert alerts[0]["threat_category"] == "SYSTEM_STARTUP"
+    assert alerts[0]["resend_id"] == "startup_email_123"

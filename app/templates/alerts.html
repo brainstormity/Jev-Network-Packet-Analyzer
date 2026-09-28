@@ -213,13 +213,13 @@
           <thead class="bg-slate-900/90 text-slate-400 uppercase font-mono text-[10px] tracking-wider border-b border-surfaceBorder">
             <tr>
               <th class="py-3 px-4">Timestamp</th>
+              <th class="py-3 px-4 text-center">Inspect</th>
               <th class="py-3 px-4">Threat Category</th>
               <th class="py-3 px-4">Severity / Risk</th>
               <th class="py-3 px-4">Network Flow</th>
               <th class="py-3 px-4">Delivery Status</th>
               <th class="py-3 px-4">Resend ID / Audit</th>
               <th class="py-3 px-4">Payload Snippet</th>
-              <th class="py-3 px-4 text-center">Investigation</th>
             </tr>
           </thead>
           <tbody id="alerts-table-body" class="divide-y divide-surfaceBorder font-sans">
@@ -500,6 +500,12 @@
           return `
             <tr class="hover:bg-slate-800/40 transition">
               <td class="py-3 px-4 text-slate-400 font-mono whitespace-nowrap">${time}</td>
+              <td class="py-3 px-4 text-center whitespace-nowrap">
+                <button onclick="inspectAlertObj(${alertJsonEscaped})" class="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-cyan-300 border border-slate-700 text-[11px] font-medium transition cursor-pointer shadow-xs" title="Inspect deep threat forensic analysis">
+                  <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                  <span>Inspect</span>
+                </button>
+              </td>
               <td class="py-3 px-4 whitespace-nowrap">
                 <div class="flex items-center space-x-1.5">
                   ${catBadge}
@@ -521,11 +527,6 @@
                 ` : (a.error_message ? `<span class="text-amber-400 text-[10px]" title="${a.error_message}">${a.error_message.slice(0, 24)}...</span>` : '<span class="text-slate-500">-</span>')}
               </td>
               <td class="py-3 px-4 font-mono text-slate-400 max-w-[200px] truncate" title="${snippet.replace(/"/g, '&quot;')}">${snippet}</td>
-              <td class="py-3 px-4 text-center whitespace-nowrap">
-                <button onclick="inspectAlertObj(${alertJsonEscaped})" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-cyan-300 border border-slate-700 text-[11px] font-medium transition cursor-pointer">
-                  Investigate
-                </button>
-              </td>
             </tr>
           `;
         }).join('');

@@ -233,39 +233,54 @@ On service startup, NetworkSentinel dispatches a `SYSTEM_STARTUP` telemetry veri
 
 ---
 
-## 7. Manual Bare-Metal Setup & Hardware Deployment
-
-If deploying directly on physical hardware or a Linux security appliance without Docker:
-
-### 1. Install System Dependencies
-```bash
-# Ubuntu / Debian
 ## 7. Real-World Traffic Capture & Deployment Architectures
 
-Capturing real live network traffic depends on your operating system and network topology. This section provides complete, tested deployment guides for every scenario:
+Capturing real live network traffic depends on your operating system and network topology. Choose from the three primary deployment methods:
 
 ---
 
-### 7.1 macOS Live Capture (Real Wi-Fi `en0`)
-On macOS, Docker Desktop runs inside a lightweight virtual machine. Because Docker on macOS does not support host networking, containers cannot capture your physical Mac Wi-Fi (`en0`) directly.
+### 7.1 Option 1: Run Locally on macOS or Linux (Direct Physical Wi-Fi / Ethernet Capture)
+* **Why run locally?** On macOS, Docker Desktop runs inside a lightweight virtual machine. Because Docker on macOS does not support host networking, containers cannot capture your physical Mac Wi-Fi (`en0`) directly. Running locally gives NetworkSentinel direct access to macOS `/dev/bpf*` packet filter devices. This manual execution method works identically on Linux.
 
-To capture **100% of your real live Mac Wi-Fi traffic**:
-1. Leave Redis running inside Docker (as a background database service).
-2. Run NetworkSentinel directly on macOS using the provided turnkey script:
+#### Step-by-Step Manual Setup (macOS & Linux):
+1. **Start Redis**:
    ```bash
-   ./start-mac.sh
+   # Option A: Via Docker (runs Redis in background)
+   docker run -d -p 6379:6379 --name redis redis:alpine
+
+   # Option B: Via local package manager
+   brew services start redis          # macOS
+   sudo systemctl start redis-server  # Ubuntu / Debian
    ```
-3. **What it does automatically:**
-   * Verifies and starts Redis on port `6379`.
-   * Auto-detects your active physical Wi-Fi or Ethernet adapter (e.g., `en0`).
-   * Binds Scapy directly to macOS Darwin `/dev/bpf*` packet filter devices with required raw socket privileges (`sudo`).
-   * Starts FastAPI on `http://localhost:8000`.
-4. Open [http://localhost:8000](http://localhost:8000) and open any website (e.g. YouTube, Wikipedia, GitHub) in your browser: you will see real packets from your live internet usage streaming instantly across the dashboard.
+
+2. **Set up Python Virtual Environment**:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+3. **Configure Environment**:
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` with your `TYPESAFE_API_KEY`, `RESEND_API_KEY`, and `ALERT_RECIPIENT`.
+
+4. **Launch NetworkSentinel**:
+   ```bash
+   # sudo is required for raw socket / BPF packet capture permissions
+   sudo venv/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+*(On macOS, you can also run `./start-mac.sh` which automates interface detection, Redis startup, and launching uvicorn).*
 
 ---
 
-### 7.2 Linux Dedicated Server / Raspberry Pi (Docker Host Mode)
-On Linux (Ubuntu, Debian, Arch, Raspberry Pi OS), Docker runs **directly on the native host kernel**. Linux Docker fully supports `network_mode: host`, allowing containers to attach directly to the physical network card with full container isolation.
+### 7.2 Option 2: Run via Docker (Linux Only - Host Network Mode)
+> ⚠️ **Linux Only:** On Linux (Ubuntu, Debian, Arch, Raspberry Pi OS), Docker runs **directly on the native host kernel**. Linux Docker fully supports `network_mode: host`, allowing containers to attach directly to the physical network card outside the container.
+> 
+> **Why it does NOT work on macOS:** Docker Desktop on macOS runs containers inside a virtual machine (HyperKit / Virtualization.framework) which isolates them from host Wi-Fi/Ethernet. macOS users must use **Option 1 (Run Locally)**.
 
 To deploy on a Linux home server, mini PC, or Raspberry Pi:
 1. Clone the repository and configure `.env`:
@@ -309,7 +324,7 @@ sudo systemctl enable --now network-sentinel.service
 
 ---
 
-### 7.3 Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)
+### 7.3 Option 3: Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)
 
 On modern home Wi-Fi and switched Ethernet networks, routers and access points enforce **unicast isolation**: traffic between your smartphone and the internet is transmitted directly between the router and that specific device's MAC address. A laptop connected to the same Wi-Fi will not passively see other devices' traffic.
 

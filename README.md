@@ -42,22 +42,42 @@ Edit `.env` with your [TypeSafe Jev](https://typesafe.ai) and [Resend](https://r
 
 ### 2. Choose How to Run
 
-## macOS Users (Captures Real Mac Wi-Fi `en0`)
-On macOS, Docker Desktop isolates containers inside a virtual machine and cannot see physical Wi-Fi traffic. Run natively on your Mac using the turnkey script:
-```bash
-./start-mac.sh
-```
-*(Starts Redis in Docker and runs NetworkSentinel directly on macOS with `/dev/bpf*` raw socket access).*
+Select the deployment option that matches your platform and monitoring goals:
 
-## Linux Users (Captures Physical Wire in Docker)
-On Linux servers, mini PCs, or Raspberry Pis, Docker runs directly on the host kernel:
+### Option 1: Run Locally (macOS & Linux)
+> **Required for macOS:** Docker Desktop on macOS runs inside a virtual machine and cannot capture traffic outside the container. Running locally gives NetworkSentinel direct raw socket access to your physical Wi-Fi/Ethernet interface (`en0` / `eth0` / `wlan0`). This method works identically on both macOS and Linux.
+
+```bash
+# 1. Start Redis in background (via Docker or local package manager)
+docker run -d -p 6379:6379 --name redis redis:alpine
+
+# 2. Set up Python environment
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Launch NetworkSentinel (sudo required for raw socket capture)
+sudo venv/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+*(On macOS, you can also run `./start-mac.sh` which automates these steps).*
+
+---
+
+### Option 2: Run via Docker (Linux Only)
+> **Linux Only:** On Linux, Docker runs directly on the native host kernel (`network_mode: host`), allowing containers to capture real traffic from physical adapters (`eth0`, `wlan0`) outside the container. *(This does NOT work on macOS due to Docker VM isolation).*
+
 ```bash
 docker compose -f docker-compose.linux.yml up -d --build
 ```
-*(Runs Redis and NetworkSentinel with `network_mode: host` to capture physical `eth0`/`wlan0` wire packets directly).*
 
-## Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)
-To monitor every device in your household (smart TVs, phones, tablets, IoT bulbs), configure Sentinel as your **Home Router DNS/Gateway** or connect via **Switch Port Mirroring (SPAN)**.  
+---
+
+### Option 3: Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)
+> **Monitor Everything:** Home Wi-Fi routers enforce unicast isolation between client devices. To passively inspect traffic from **every device across your household** (phones, smart TVs, IoT cameras):
+* **Router DNS / Gateway Redirection**: Point your home router's Primary DNS or Gateway to NetworkSentinel (Pi-hole style).
+* **Managed Switch Port Mirroring (SPAN)**: Duplicate 100% of router traffic to NetworkSentinel with zero added latency.
+* **Inline Appliance**: Run NetworkSentinel on a dual-NIC Raspberry Pi or Mini PC as a transparent hardware bridge.
+
 👉 Follow the complete step-by-step setup in [**docs.md: Whole-Home Network Monitoring Guide**](docs.md#73-whole-home-network-monitoring-all-devices-smart-tvs-phones-iot).
 
 ---
@@ -80,7 +100,7 @@ For detailed guides, architecture diagrams, and complete manuals, see [**docs.md
 | [**L1 Pre-Filter & Caching Engine**](docs.md#4-l1-deterministic-pre-filter--bidirectional-flow-caching) | TLS data bypass, zero-payload pruning, and bidirectional flow keys. |
 | [**Email Alerting & Resend Setup**](docs.md#5-email-alerting--resend-dispatch-engine) | Sandbox setup, custom domain verification, and 5-min cooldown logic. |
 | [**REST & WebSocket API Reference**](docs.md#6-rest--websocket-api-reference) | Full reference for all HTTP endpoints and WebSocket feeds. |
-| [**Bare-Metal Manual Installation**](docs.md#7-manual-bare-metal-setup--hardware-deployment) | Running on Linux/macOS with Python, `setcap` permissions, and Redis. |
+| [**Deployment Architectures (Local, Linux Docker, Whole-Network)**](docs.md#7-real-world-traffic-capture--deployment-architectures) | Running locally on Mac/Linux, host-mode Docker on Linux, and whole-home monitoring. |
 | [**Troubleshooting & FAQs**](docs.md#8-advanced-troubleshooting--faqs) | Common network interface, permission, and Resend delivery questions. |
 
 ---

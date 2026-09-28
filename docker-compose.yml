@@ -1,0 +1,44 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: network_sentinel_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  sentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: network_sentinel_app
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_PATH=/app/data/network_sentinel.db
+    ports:
+      - "8000:8000"
+    # Linux raw packet capture privileges
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # Uncomment network_mode: host on Linux systems to monitor the host machine's physical network adapter directly:
+    # network_mode: host
+    volumes:
+      - sentinel_data:/app/data
+
+volumes:
+  redis_data:
+  sentinel_data:

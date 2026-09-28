@@ -1,0 +1,26 @@
+# Core Web Framework & ASGI Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.8.0
+pydantic-settings>=2.4.0
+python-dotenv>=1.0.0
+jinja2>=3.1.0
+websockets>=13.0
+
+# Packet Capture & Telemetry
+scapy>=2.5.0
+
+# Message Broker & Async Cache
+redis>=5.0.0
+fakeredis>=2.20.0
+
+# Async HTTP Client (Jev AI & Resend APIs)
+httpx>=0.27.0
+
+# Local Persistence
+aiosqlite>=0.20.0
+
+# Testing & Mocking
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+respx>=0.21.0

@@ -1,0 +1,38 @@
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# Python Artifacts & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+.venv/
+env/
+venv/
+build/
+dist/
+*.spec
+
+# Local Storage, Captures & Databases
+*.sqlite3
+*.db
+*.db-journal
+*.log
+*.pcap
+*.pcapng
+data/
+
+# OS & IDE Cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

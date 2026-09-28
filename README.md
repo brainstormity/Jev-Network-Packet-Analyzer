@@ -24,9 +24,9 @@
 
 ---
 
-## 🚀 Quick Start (Docker Compose)
+## 🚀 Quick Start: Choose Your Environment
 
-The fastest and recommended way to run NetworkSentinel is with Docker Compose:
+NetworkSentinel captures **real physical network traffic** across three environments:
 
 ### 1. Clone & Configure
 ```bash
@@ -34,31 +34,35 @@ git clone https://github.com/your-username/network-sentinel.git
 cd "network-sentinel"
 cp .env.example .env
 ```
+Edit `.env` with your [TypeSafe Jev](https://typesafe.ai) and [Resend](https://resend.com) API keys.
 
-Edit `.env` with your API keys:
-```ini
-# TypeSafe Jev API (https://typesafe.ai)
-TYPESAFE_API_KEY=your_typesafe_key_here
+---
 
-# Resend Email Alerts (https://resend.com)
-RESEND_API_KEY=re_your_resend_key_here
-RESEND_FROM_EMAIL=onboarding@resend.dev   # Free sandbox sender (no domain needed)
-ALERT_RECIPIENT=your_registered_email@gmail.com
-```
+### 2. Choose How to Run
 
-### 2. Start the Application
+#### 🍏 Option A: macOS Users (Captures Real Mac Wi-Fi `en0`)
+On macOS, Docker Desktop isolates containers inside a virtual machine and cannot see physical Wi-Fi traffic. Run natively on your Mac using the turnkey script:
 ```bash
-docker compose up -d --build
+./start-mac.sh
 ```
+*(Starts Redis in Docker and runs NetworkSentinel directly on macOS with `/dev/bpf*` raw socket access).*
+
+#### 🐧 Option B: Linux Users (Captures Physical Wire in Docker)
+On Linux servers, mini PCs, or Raspberry Pis, Docker runs directly on the host kernel:
+```bash
+docker compose -f docker-compose.linux.yml up -d --build
+```
+*(Runs Redis and NetworkSentinel with `network_mode: host` to capture physical `eth0`/`wlan0` wire packets directly).*
+
+#### 🏠 Option C: Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)
+To monitor every device in your household (smart TVs, phones, tablets, IoT bulbs), configure Sentinel as your **Home Router DNS/Gateway** or connect via **Switch Port Mirroring (SPAN)**.  
+👉 Follow the complete step-by-step setup in [**docs.md: Whole-Home Network Monitoring Guide**](docs.md#73-whole-home-network-monitoring-all-devices-smart-tvs-phones-iot).
+
+---
 
 ### 3. Open the Dashboard
 * **Live Telemetry Stream**: [http://localhost:8000](http://localhost:8000)
 * **Incident Dispatch Center**: [http://localhost:8000/alerts](http://localhost:8000/alerts)
-
-To stop the system:
-```bash
-docker compose down
-```
 
 ---
 

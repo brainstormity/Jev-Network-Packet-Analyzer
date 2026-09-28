@@ -1,0 +1,51 @@
+# ==============================================================================
+# NetworkSentinel - Linux Docker Host-Mode Deployment
+# ==============================================================================
+# Enables native host network mode on Linux systems (Ubuntu, Debian, Arch,
+# Raspberry Pi OS) to capture real physical interface wire traffic (eth0, wlan0)
+# directly inside Docker with zero virtualization NAT isolation.
+#
+# Usage:
+#   docker compose -f docker-compose.linux.yml up -d --build
+# ==============================================================================
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: network_sentinel_redis
+    restart: unless-stopped
+    network_mode: host
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  sentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: network_sentinel_app
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://127.0.0.1:6379/0
+      - DATABASE_PATH=/app/data/network_sentinel.db
+    # Attaches directly to the Linux physical network adapter (eth0 / wlan0):
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - sentinel_data:/app/data
+
+volumes:
+  redis_data:
+  sentinel_data:

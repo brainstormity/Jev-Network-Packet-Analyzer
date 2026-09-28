@@ -27,7 +27,11 @@ This document covers system architecture, dashboard operations, incident respons
    - [5-Minute Per-Source Cooldown](#52-5-minute-per-source-cooldown)
    - [Startup Notification & Error Fallbacks](#53-startup-notification--error-fallbacks)
 6. [REST & WebSocket API Reference](#6-rest--websocket-api-reference)
-7. [Manual Bare-Metal Setup & Hardware Deployment](#7-manual-bare-metal-setup--hardware-deployment)
+7. [Real-World Traffic Capture & Deployment Architectures](#7-real-world-traffic-capture--deployment-architectures)
+   - [7.1 macOS Live Capture (Real Wi-Fi en0)](#71-macos-live-capture-real-wi-fi-en0)
+   - [7.2 Linux Dedicated Server / Raspberry Pi (Docker Host Mode)](#72-linux-dedicated-server--raspberry-pi-docker-host-mode)
+   - [7.3 Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)](#73-whole-home-network-monitoring-all-devices-smart-tvs-phones-iot)
+   - [7.4 Bare-Metal Manual Installation (Without Docker)](#74-bare-metal-manual-installation-without-docker)
 8. [Advanced Troubleshooting & FAQs](#8-advanced-troubleshooting--faqs)
 
 ---
@@ -232,6 +236,121 @@ If deploying directly on physical hardware or a Linux security appliance without
 ### 1. Install System Dependencies
 ```bash
 # Ubuntu / Debian
+## 7. Real-World Traffic Capture & Deployment Architectures
+
+Capturing real live network traffic depends on your operating system and network topology. This section provides complete, tested deployment guides for every scenario:
+
+---
+
+### 7.1 macOS Live Capture (Real Wi-Fi `en0`)
+On macOS, Docker Desktop runs inside a lightweight virtual machine. Because Docker on macOS does not support host networking, containers cannot capture your physical Mac Wi-Fi (`en0`) directly.
+
+To capture **100% of your real live Mac Wi-Fi traffic**:
+1. Leave Redis running inside Docker (as a background database service).
+2. Run NetworkSentinel directly on macOS using the provided turnkey script:
+   ```bash
+   ./start-mac.sh
+   ```
+3. **What it does automatically:**
+   * Verifies and starts Redis on port `6379`.
+   * Auto-detects your active physical Wi-Fi or Ethernet adapter (e.g., `en0`).
+   * Binds Scapy directly to macOS Darwin `/dev/bpf*` packet filter devices with required raw socket privileges (`sudo`).
+   * Starts FastAPI on `http://localhost:8000`.
+4. Open [http://localhost:8000](http://localhost:8000) and open any website (e.g. YouTube, Wikipedia, GitHub) in your browser: you will see real packets from your live internet usage streaming instantly across the dashboard.
+
+---
+
+### 7.2 Linux Dedicated Server / Raspberry Pi (Docker Host Mode)
+On Linux (Ubuntu, Debian, Arch, Raspberry Pi OS), Docker runs **directly on the native host kernel**. Linux Docker fully supports `network_mode: host`, allowing containers to attach directly to the physical network card with full container isolation.
+
+To deploy on a Linux home server, mini PC, or Raspberry Pi:
+1. Clone the repository and configure `.env`:
+   ```bash
+   git clone https://github.com/your-username/network-sentinel.git
+   cd network-sentinel
+   cp .env.example .env
+   ```
+2. Launch using the dedicated Linux host-mode compose file:
+   ```bash
+   docker compose -f docker-compose.linux.yml up -d --build
+   ```
+3. **What it does:**
+   * Both Redis and NetworkSentinel run in `network_mode: host`.
+   * Attaches directly to your physical interface (`eth0`, `wlan0`, or `enp3s0`).
+   * Retains Docker's volume persistence, automatic restarts, and container isolation while capturing all physical wire packets.
+
+#### Running as a 24/7 System Service (Linux systemd)
+To ensure NetworkSentinel starts automatically on boot:
+```ini
+# /etc/systemd/system/network-sentinel.service
+[Unit]
+Description=NetworkSentinel Autonomous NIDS
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/network-sentinel
+ExecStart=/usr/bin/docker compose -f docker-compose.linux.yml up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.linux.yml down
+
+[Install]
+WantedBy=multi-user.target
+```
+Enable and start the service:
+```bash
+sudo systemctl enable --now network-sentinel.service
+```
+
+---
+
+### 7.3 Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)
+
+On modern home Wi-Fi and switched Ethernet networks, routers and access points enforce **unicast isolation**: traffic between your smartphone and the internet is transmitted directly between the router and that specific device's MAC address. A laptop connected to the same Wi-Fi will not passively see other devices' traffic.
+
+To monitor **every device across your entire home network**, use one of the following three standard network engineering architectures:
+
+#### Architecture A: Router DNS & Gateway Redirection (Easiest - Pi-hole Style)
+1. Assign your NetworkSentinel machine (e.g., a Raspberry Pi or home server) a static IP on your LAN (e.g., `192.168.1.50`).
+2. Log in to your home Wi-Fi router's admin portal (typically `192.168.1.1` or `192.168.0.1`).
+3. Under **DHCP Settings**:
+   * Set the **Primary DNS Server** to your Sentinel IP (`192.168.1.50`).
+   * (Optional) Set the **Default Gateway** to `192.168.1.50` with IP forwarding enabled (`sysctl -w net.ipv4.ip_forward=1`).
+4. **Result:** Every phone, smart TV, gaming console, and IoT device automatically directs DNS resolutions and outbound sessions through NetworkSentinel, enabling centralized triage of home network threats.
+
+#### Architecture B: Managed Switch Port Mirroring (SPAN Port - Most Powerful)
+If your home network uses a smart or managed switch (e.g., UniFi Switch, TP-Link Omada, Netgear ProSAFE, Cisco CBS):
+1. Plug your home router or Wi-Fi Access Point into **Port 1**.
+2. Plug your NetworkSentinel capture server into **Port 8**.
+3. In the switch management dashboard, enable **Port Mirroring / SPAN**:
+   * **Source Port:** Port 1 (Router / AP uplink).
+   * **Destination / Mirror Port:** Port 8 (NetworkSentinel).
+4. **Result:** The switch hardware replicates a physical mirror copy of 100% of all packets passing through the router directly into NetworkSentinel's network card, with zero performance impact or latency on home devices.
+
+#### Architecture C: Inline Transparent Hardware Bridge (Dual-NIC Appliance)
+Using a small device with two Ethernet ports (e.g., a Raspberry Pi 4 with a USB 3.0 Gigabit Ethernet adapter, or an Intel NUC):
+1. Configure Linux network bridging (`br0` combining `eth0` and `eth1`):
+   ```bash
+   sudo ip link add name br0 type bridge
+   sudo ip link set eth0 master br0
+   sudo ip link set eth1 master br0
+   sudo ip link set dev br0 up
+   ```
+2. Physically insert the Sentinel appliance between your ISP Modem and Wi-Fi Router:
+   $$\text{ISP Modem} \longleftrightarrow [\text{eth0}] \ \mathbf{NetworkSentinel} \ [\text{eth1}] \longleftrightarrow \text{Wi-Fi Router}$$
+3. Set `CAPTURE_INTERFACE=br0` in `.env`.
+4. **Result:** Every single packet entering or exiting your household physically flows through the bridge, providing deep NIDS visibility across every device on the network.
+
+---
+
+### 7.4 Bare-Metal Manual Installation (Without Docker)
+
+If you prefer running directly on your host operating system without containers:
+
+#### 1. Install System Dependencies
+```bash
+# Ubuntu / Debian
 sudo apt-get update
 sudo apt-get install -y python3-venv python3-pip libpcap-dev tcpdump libcap2-bin redis-server
 
@@ -239,14 +358,13 @@ sudo apt-get install -y python3-venv python3-pip libpcap-dev tcpdump libcap2-bin
 brew install python@3.11 libpcap redis
 ```
 
-### 2. Grant Raw Socket Capabilities
-Raw packet capture requires socket privileges. Grant Python raw socket capabilities without running as root:
+#### 2. Grant Raw Socket Capabilities (Linux)
+Grant Python raw socket capabilities without running as root:
 ```bash
-# Linux
 sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
 ```
 
-### 3. Virtual Environment & Dependencies
+#### 3. Virtual Environment & Dependencies
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -254,9 +372,13 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 4. Start Redis & Application
+#### 4. Launch Services
 ```bash
-sudo systemctl start redis-server
+# Start Redis
+sudo systemctl start redis-server   # On Linux
+brew services start redis          # On macOS
+
+# Start NetworkSentinel
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 

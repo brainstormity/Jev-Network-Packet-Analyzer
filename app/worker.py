@@ -29,8 +29,8 @@ JEV_QUESTIONS = {
         "type": "choice",
         "instructions": "Categorize the threat classification of this traffic.",
         "criteria": {
-            "benign": "Routine user browsing, trusted CDNs, OS telemetry, or standard developer tools.",
-            "c2_beacon": "Periodic or suspicious outbound connection to an unknown external IP or dynamic DNS service without legitimate SNI.",
+            "benign": "Routine user browsing, trusted CDNs (Cloudflare, Google, Apple, AWS, Fastly), OS telemetry, encrypted web transport (HTTP/3 QUIC or TLS 1.3 on port 443/8443, even with high entropy and missing SNI), or standard developer tools.",
+            "c2_beacon": "Periodic outbound command-and-control connection to malicious infrastructure or dynamic DNS without legitimate business purpose, typically over non-standard ports (e.g. 4444, 1337, 8888, 31337) or containing explicit C2 stager tokens (e.g. stage=, beacon, uuid=, heartbeat). Never categorize standard port 443/80/8443 web or CDN traffic as c2_beacon unless explicit exploit keywords are present.",
             "dns_tunneling": "High-entropy, encoded subdomains or data exfiltration over port 53.",
             "exploit_attempt": "SQL injection, reverse shell syntax, unauthorized command payloads, or path traversal.",
             "reconnaissance": "Port scanning, host enumeration, or abnormal flag combinations.",
@@ -86,7 +86,9 @@ def simulate_jev_decision(state: Dict[str, Any]) -> Tuple[float, str, float, flo
     """
     domain = (state.get("domain_or_sni") or "").lower()
     snippet = (state.get("payload_snippet") or "").lower()
-    port = state.get("dst_port", 0)
+    dst_port = int(state.get("dst_port") or 0)
+    src_port = int(state.get("src_port") or 0)
+    ports = {dst_port, src_port}
     entropy = float(state.get("entropy", 0.0))
 
     # 1. Exploit attempts (SQLi, traversal, reverse shell)
@@ -94,17 +96,17 @@ def simulate_jev_decision(state: Dict[str, Any]) -> Tuple[float, str, float, flo
         return 0.98, "exploit_attempt", 0.96, 4.0, 0.95
 
     # 2. DNS Tunneling
-    if port == 53 and (entropy > 4.5 or len(domain) > 40):
+    if 53 in ports and (entropy > 4.5 or len(domain) > 40):
         return 0.94, "dns_tunneling", 0.92, 3.4, 0.90
 
     # 3. C2 Beaconing
     if any(k in snippet for k in ("beacon", "c2-checkin", "uuid=", "cmd_exec", "heartbeat")) or any(
         k in domain for k in ("dynamic-dns", "duckdns", "ngrok", "c2-checkin", "evil-corp")
-    ) or port in (4444, 1337, 8888, 31337):
+    ) or any(p in (4444, 1337, 8888, 31337) for p in ports):
         return 0.95, "c2_beacon", 0.94, 3.8, 0.92
 
     # 4. Reconnaissance / Port scanning
-    if "nmap" in snippet or port in (21, 23, 135, 445, 3389) or "masscan" in snippet:
+    if "nmap" in snippet or any(p in (21, 23, 135, 445, 3389) for p in ports) or "masscan" in snippet:
         return 0.88, "reconnaissance", 0.89, 2.7, 0.85
 
     # 5. Default benign
@@ -143,12 +145,63 @@ SUSPICIOUS_DOMAINS = (
 
 SUSPICIOUS_PORTS = {21, 23, 135, 445, 1337, 3389, 4444, 6667, 8888, 31337}
 
+# Major trusted CDN and cloud provider network prefixes
+TRUSTED_CDN_NETWORKS = [
+    # Cloudflare
+    ipaddress.ip_network("104.16.0.0/12"),
+    ipaddress.ip_network("162.158.0.0/15"),
+    ipaddress.ip_network("162.159.0.0/16"),
+    ipaddress.ip_network("172.64.0.0/13"),
+    ipaddress.ip_network("108.162.192.0/18"),
+    ipaddress.ip_network("198.41.128.0/17"),
+    ipaddress.ip_network("188.114.96.0/20"),
+    ipaddress.ip_network("190.93.240.0/20"),
+    ipaddress.ip_network("197.234.240.0/22"),
+    # Google
+    ipaddress.ip_network("142.250.0.0/15"),
+    ipaddress.ip_network("172.217.0.0/16"),
+    ipaddress.ip_network("216.58.192.0/19"),
+    ipaddress.ip_network("74.125.0.0/16"),
+    ipaddress.ip_network("8.8.8.8/32"),
+    ipaddress.ip_network("8.8.4.4/32"),
+    # Apple
+    ipaddress.ip_network("17.0.0.0/8"),
+    # Fastly
+    ipaddress.ip_network("151.101.0.0/16"),
+    ipaddress.ip_network("199.232.0.0/16"),
+    # AWS CloudFront / EC2
+    ipaddress.ip_network("13.32.0.0/15"),
+    ipaddress.ip_network("13.35.0.0/16"),
+    ipaddress.ip_network("13.224.0.0/14"),
+    ipaddress.ip_network("3.160.0.0/12"),
+    ipaddress.ip_network("52.84.0.0/15"),
+    ipaddress.ip_network("54.230.0.0/16"),
+    # Akamai & Microsoft
+    ipaddress.ip_network("23.192.0.0/11"),
+    ipaddress.ip_network("104.64.0.0/10"),
+    ipaddress.ip_network("20.0.0.0/11"),
+    ipaddress.ip_network("13.104.0.0/14"),
+]
+
+
+def is_trusted_cdn_ip(ip_str: str) -> bool:
+    """Identify if an IP belongs to a major trusted CDN or cloud provider."""
+    if not ip_str:
+        return False
+    try:
+        ip = ipaddress.ip_address(ip_str.strip())
+        return any(ip in net for net in TRUSTED_CDN_NETWORKS)
+    except (ValueError, AttributeError):
+        return False
+
 
 def has_exploit_or_suspicion(state: Dict[str, Any]) -> bool:
     """Check if the packet state has any explicit exploit, C2, or anomaly indicators."""
     snippet = (state.get("payload_snippet") or "").lower()
     domain = (state.get("domain_or_sni") or "").lower()
-    port = state.get("dst_port", 0)
+    dst_port = int(state.get("dst_port") or 0)
+    src_port = int(state.get("src_port") or 0)
+    ports = {dst_port, src_port}
     entropy = float(state.get("entropy", 0.0))
 
     if any(k in snippet for k in EXPLOIT_KEYWORDS):
@@ -157,9 +210,9 @@ def has_exploit_or_suspicion(state: Dict[str, Any]) -> bool:
         return True
     if any(k in domain for k in SUSPICIOUS_DOMAINS):
         return True
-    if port in SUSPICIOUS_PORTS:
+    if any(p in SUSPICIOUS_PORTS for p in ports):
         return True
-    if port == 53 and (entropy > 4.5 or len(domain) > 40):
+    if 53 in ports and (entropy > 4.5 or len(domain) > 40):
         return True
     if state.get("is_simulated"):
         return True
@@ -169,25 +222,41 @@ def has_exploit_or_suspicion(state: Dict[str, Any]) -> bool:
 def is_l1_bypassed_benign(state: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     """L1 Deterministic Pre-Filter.
 
-    Bypasses encrypted TLS application data streams and zero-payload TCP packets
-    if they contain no exploit or anomaly signatures.
+    Bypasses encrypted TLS application data streams, QUIC (HTTP/3) UDP streams,
+    trusted CDN flows, and zero-payload TCP packets if they contain no exploit
+    or anomaly signatures.
     """
     if has_exploit_or_suspicion(state):
         return False, None
 
-    port = state.get("dst_port", 0)
+    protocol = (state.get("protocol") or "").upper()
+    dst_port = int(state.get("dst_port") or 0)
+    src_port = int(state.get("src_port") or 0)
+    ports = {dst_port, src_port}
     snippet = state.get("payload_snippet") or ""
     payload_len = state.get("payload_len", len(snippet))
-    is_tls = state.get("is_tls_app_data", False) or snippet.startswith("\x17\x03")
+    src_ip = state.get("src_ip") or ""
+    dst_ip = state.get("dst_ip") or ""
 
-    # 1. Encrypted TLS Application Data on standard TLS ports (443, 8443, etc.)
-    # Ciphertext cannot be meaningfully analyzed by Jev AI and causes false flags or token waste
-    if is_tls and port in (443, 8443, 993, 995, 465, 8080):
+    is_tls = state.get("is_tls_app_data", False) or snippet.startswith("\x17\x03")
+    is_quic = state.get("is_quic", False) or (protocol == "UDP" and (443 in ports))
+
+    # 1. QUIC / HTTP/3 encrypted UDP transport on port 443 (e.g. Chrome, Safari, Cloudflare, Google)
+    if is_quic:
+        return True, "l1_quic_stream"
+
+    # 2. Encrypted TLS Application Data on standard TLS ports (443, 8443, etc.)
+    if is_tls and any(p in (443, 8443, 993, 995, 465, 8080) for p in ports):
         return True, "l1_tls_app_data"
 
-    # 2. Zero-Payload TCP control packets on routine ports (80, 443, 8080, etc.)
+    # 3. Known Trusted CDN / Cloud Provider subnets on routine web ports
+    if any(p in (80, 443, 8080, 8443) for p in ports):
+        if is_trusted_cdn_ip(dst_ip) or is_trusted_cdn_ip(src_ip):
+            return True, "l1_trusted_cdn"
+
+    # 4. Zero-Payload TCP control packets on routine ports (80, 443, 8080, etc.)
     if payload_len == 0 or not snippet.strip():
-        if port in (80, 443, 8080, 8443, 53) or port > 1024:
+        if any(p in (80, 443, 8080, 8443, 53) or p > 1024 for p in ports):
             return True, "l1_zero_payload"
 
     return False, None

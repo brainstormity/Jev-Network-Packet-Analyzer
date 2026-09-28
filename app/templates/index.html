@@ -904,45 +904,103 @@
       const dst = event.dst_ip || '185.220.101.5';
 
       if (category === 'c2_beacon') {
+        const isSimOrStager = snippet.includes('stage=2') || snippet.includes('beacon') || event.is_simulated;
+        const isMetasploitPort = port === 4444 || port === 1337 || port === 31337;
+        const isWebPort = port === 443 || port === 8443;
+        const entropyVal = (event.entropy || 0).toFixed(2);
+
+        let bannerTitle = "C2 BEACON: Suspicious Outbound Telemetry";
+        let bannerText = "";
+
+        if (isSimOrStager) {
+          bannerTitle = "CRITICAL ACTIVE COMPROMISE: C2 Beacon & Stager Check-In";
+          bannerText = `Host <strong class="text-cyan-300 font-mono">${src}</strong> is actively initiating unauthorized outbound telemetry to an external command server (<strong class="text-white font-mono">${dst}:${port}</strong>). The payload matches known C2 dropper / stager heartbeat patterns.`;
+        } else if (isWebPort) {
+          bannerTitle = "SUSPICIOUS OUTBOUND TELEMETRY: Unverified Encrypted Session";
+          bannerText = `Host <strong class="text-cyan-300 font-mono">${src}</strong> initiated an outbound session to <strong class="text-white font-mono">${dst}:${port}</strong> with high Shannon entropy (${entropyVal}/8.0) and unverified domain identity.`;
+        } else {
+          bannerTitle = "HIGH RISK: Non-Standard Outbound Beaconing";
+          bannerText = `Host <strong class="text-cyan-300 font-mono">${src}</strong> initiated outbound communication to <strong class="text-white font-mono">${dst}:${port}</strong> over non-standard egress port ${port}.`;
+        }
+
+        const dangers = [
+          {
+            title: "Outbound Host Origin",
+            desc: `Traffic originates from internal host <strong>${src}</strong> outbound to external destination <strong>${dst}</strong>.`
+          }
+        ];
+
+        if (isMetasploitPort) {
+          dangers.push({
+            title: `Port ${port} (Known Reverse Shell Listener)`,
+            desc: `Destination port <strong>${port}</strong> is a well-known default listener for reverse shells, Netcat, and Meterpreter payloads.`
+          });
+        } else if (isWebPort) {
+          dangers.push({
+            title: `Encrypted Transport (Port ${port})`,
+            desc: `Outbound session uses encrypted transport (HTTPS/QUIC) with high entropy (${entropyVal}/8.0), bypassing static packet inspection.`
+          });
+        } else {
+          dangers.push({
+            title: `Non-Standard Egress Port (${port})`,
+            desc: `Outbound traffic routed through non-standard egress port <strong>${port}</strong>.`
+          });
+        }
+
+        if (domain && domain.length > 0) {
+          dangers.push({
+            title: "External Domain Infrastructure",
+            desc: `Outbound destination resolved to <strong class="text-amber-300 font-mono">${domain}</strong>.`
+          });
+        } else {
+          dangers.push({
+            title: "Direct IP Communication (Missing SNI)",
+            desc: `Connection communicates directly to IP <strong class="text-white font-mono">${dst}</strong> without standard Server Name Indication (SNI).`
+          });
+        }
+
+        if (snippet.includes('stage=2')) {
+          dangers.push({
+            title: "Multistage Ingress (stage=2)",
+            desc: `Requesting <code>stage=2</code> confirms the host is retrieving secondary post-exploitation modules or payload implants.`
+          });
+        } else if (snippet.includes('beacon') || snippet.includes('uuid')) {
+          dangers.push({
+            title: "C2 Check-in Identifier",
+            desc: `Payload contains beaconing tokens or periodic check-in identifier.`
+          });
+        }
+
+        const mitre = [
+          { id: "T1071.001", name: "Application Layer Protocol: Web Protocols" }
+        ];
+        if (snippet.includes('stage=2')) {
+          mitre.push({ id: "T1105", name: "Ingress Tool Transfer (Stage 2 Download)" });
+        }
+        if (domain && (domain.includes('dns') || domain.includes('ngrok'))) {
+          mitre.push({ id: "T1568.002", name: "Dynamic Resolution: Dynamic DNS" });
+        }
+        if (isMetasploitPort) {
+          mitre.push({ id: "T1571", name: `Non-Standard Port: ${port}` });
+        }
+
         return {
           banner: `
             <div class="w-7 h-7 rounded-full bg-threatRed flex items-center justify-center text-white shrink-0 mt-0.5 font-bold">⚠️</div>
             <div>
-              <div class="font-bold text-white text-xs mb-0.5">CRITICAL ACTIVE COMPROMISE: C2 Beacon & Stager Check-In</div>
+              <div class="font-bold text-white text-xs mb-0.5">${bannerTitle}</div>
               <p class="text-slate-300 text-[11px] leading-relaxed">
-                Host <strong class="text-cyan-300 font-mono">${src}</strong> is actively initiating unauthorized outbound telemetry to an external command server (<strong class="text-white font-mono">${dst}:${port}</strong>). The presence of <code class="bg-black/50 px-1 py-0.5 rounded text-cyan-300 font-mono">stage=2</code> in the payload snippet confirms that the initial dropper has succeeded and is now pulling the secondary malware stage (interactive shell / ransomware / implant) into your network.
+                ${bannerText}
               </p>
             </div>
           `,
-          dangers: [
-            {
-              title: "Internal Host Compromise Confirmed",
-              desc: `Traffic originates from internal host <strong>${src}</strong> outbound, meaning malware code execution is already active inside your perimeter.`
-            },
-            {
-              title: "Port 4444 (Metasploit Signature)",
-              desc: `Destination port <strong>${port}</strong> is the well-known default listener for Metasploit Framework reverse shells and Meterpreter payloads.`
-            },
-            {
-              title: "Dynamic DNS Infrastructure",
-              desc: `Domain <strong class="text-amber-300 font-mono">${domain}</strong> utilizes Dynamic DNS, a common adversary tactic to rapidly rotate C2 IPs and bypass static reputation lists.`
-            },
-            {
-              title: "Multistage Ingress (stage=2)",
-              desc: `Requesting <code>/beacon?id=4910&stage=2</code> means the victim host has an assigned session ID and is actively downloading secondary post-exploitation tools.`
-            }
-          ],
-          mitre: [
-            { id: "T1071.001", name: "Application Layer Protocol: Web Protocols" },
-            { id: "T1105", name: "Ingress Tool Transfer (Stage 2 Download)" },
-            { id: "T1568.002", name: "Dynamic Resolution: Dynamic DNS" },
-            { id: "T1571", name: "Non-Standard Port: 4444" }
-          ],
+          dangers: dangers,
+          mitre: mitre,
           runbook: [
-            "🚨 <strong>Host Isolation:</strong> Disconnect internal host <code>" + src + "</code> from the network immediately (isolate VLAN or unplug cable).",
-            "🛡️ <strong>Firewall Rule:</strong> Block outbound traffic to destination IP <code>" + dst + "</code> and sinkhole domain <code>" + domain + "</code>.",
-            "🔍 <strong>Process Triage:</strong> On <code>" + src + "</code>, run <code>netstat -ano</code> or <code>lsof -i :" + port + "</code> to terminate the offending process (PID).",
-            "💾 <strong>Forensic Investigation:</strong> Capture volatile memory dump, inspect cron/scheduled tasks, and search for persistence droppers."
+            "🚨 <strong>Host Isolation:</strong> Disconnect internal host <code>" + src + "</code> from the network if suspicious process is verified.",
+            "🛡️ <strong>Firewall Rule:</strong> Block outbound traffic to destination IP <code>" + dst + "</code>.",
+            "🔍 <strong>Process Triage:</strong> On <code>" + src + "</code>, run <code>lsof -i :" + port + "</code> or <code>netstat -ano</code> to identify the owning process.",
+            "💾 <strong>Forensic Investigation:</strong> Inspect active sockets, recent downloads, and persistence hooks."
           ]
         };
       } else if (category === 'dns_tunneling') {
@@ -976,33 +1034,51 @@
           ]
         };
       } else if (category === 'exploit_attempt') {
+        const lowerSnip = snippet.toLowerCase();
+        let exploitType = "Web Application Exploit Signature";
+        let payloadDangerDesc = "Payload contains unauthorized injection or traversal strings.";
+
+        if (lowerSnip.includes('union') || lowerSnip.includes('select')) {
+          exploitType = "SQL Injection (SQLi) Attempt";
+          payloadDangerDesc = "Payload contains unauthorized SQL database enumeration commands (<code>UNION SELECT</code>).";
+        } else if (lowerSnip.includes('/etc/passwd') || lowerSnip.includes('../')) {
+          exploitType = "Path Traversal & Arbitrary File Read";
+          payloadDangerDesc = "Payload attempts to break directory boundaries and read sensitive system files (<code>/etc/passwd</code>).";
+        } else if (lowerSnip.includes('/bin/sh') || lowerSnip.includes('cmd.exe') || lowerSnip.includes('eval(')) {
+          exploitType = "Remote Code Execution (RCE) / Shell Probe";
+          payloadDangerDesc = "Payload contains shell execution primitives (<code>/bin/sh</code> or <code>eval</code>) attempting unauthorized command execution.";
+        } else if (lowerSnip.includes('<script>')) {
+          exploitType = "Cross-Site Scripting (XSS) Injection";
+          payloadDangerDesc = "Payload contains unescaped JavaScript tags (<code>&lt;script&gt;</code>) targeting client browsers.";
+        }
+
         return {
           banner: `
             <div class="w-7 h-7 rounded-full bg-threatRed flex items-center justify-center text-white shrink-0 mt-0.5 font-bold">⚠️</div>
             <div>
-              <div class="font-bold text-white text-xs mb-0.5">CRITICAL EXPLOIT ATTEMPT: Web Application Exploit Signature</div>
+              <div class="font-bold text-white text-xs mb-0.5">CRITICAL EXPLOIT ATTEMPT: ${exploitType}</div>
               <p class="text-slate-300 text-[11px] leading-relaxed">
-                Inbound payload targeting internal asset <strong class="text-cyan-300 font-mono">${dst}:${port}</strong> contains active SQL injection, traversal, or command injection strings.
+                Inbound payload targeting internal asset <strong class="text-cyan-300 font-mono">${dst}:${port}</strong> contains active ${exploitType.toLowerCase()} signatures.
               </p>
             </div>
           `,
           dangers: [
             {
               title: "Active Exploit Payload",
-              desc: "Payload contains unauthorized database enumeration commands (<code>UNION SELECT username, password FROM users</code>)."
+              desc: payloadDangerDesc
             },
             {
-              title: "Targeted Database Breach",
-              desc: "Attacker attempting to extract sensitive credentials and compromise database authentication tables."
+              title: "Targeted Perimeter Breach",
+              desc: "Attacker attempting to compromise runtime application components and escalate access."
             }
           ],
           mitre: [
             { id: "T1190", name: "Exploit Public-Facing Application" },
-            { id: "T1212", name: "Exploitation for Credential Access" }
+            { id: "T1059", name: "Command and Scripting Interpreter" }
           ],
           runbook: [
-            "🛡️ <strong>WAF Block:</strong> Enforce immediate perimeter URI block for SQL injection patterns.",
-            "🔍 <strong>Audit Database:</strong> Review database query logs for unauthorized reads or schema modifications."
+            "🛡️ <strong>WAF Block:</strong> Enforce immediate perimeter URI block for detected exploit patterns.",
+            "🔍 <strong>Audit Application:</strong> Inspect web application logs for HTTP response status codes and potential state change."
           ]
         };
       } else if (category === 'reconnaissance') {

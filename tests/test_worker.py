@@ -67,8 +67,8 @@ async def test_worker_caching_and_processing(tmp_path):
         "timestamp": 1727481600.0,
         "protocol": "TCP",
         "src_ip": "192.168.1.100",
-        "dst_ip": "142.250.190.46",
-        "dst_port": 443,
+        "dst_ip": "93.184.216.34",
+        "dst_port": 80,
         "domain_or_sni": "gstatic.com",
         "payload_snippet": "GET /images HTTP/1.1",
         "entropy": 2.1,
@@ -218,8 +218,8 @@ async def test_bidirectional_flow_caching(tmp_path):
         "timestamp": 1727481600.0,
         "protocol": "TCP",
         "src_ip": "172.18.0.3",
-        "dst_ip": "104.18.25.46",
-        "dst_port": 443,
+        "dst_ip": "93.184.216.34",
+        "dst_port": 80,
         "domain_or_sni": "example.com",
         "payload_snippet": "GET / HTTP/1.1",
         "payload_len": 14,
@@ -236,7 +236,7 @@ async def test_bidirectional_flow_caching(tmp_path):
     inbound = {
         "timestamp": 1727481601.0,
         "protocol": "TCP",
-        "src_ip": "104.18.25.46",
+        "src_ip": "93.184.216.34",
         "dst_ip": "172.18.0.3",
         "dst_port": 58920,
         "domain_or_sni": "",
@@ -291,3 +291,80 @@ async def test_l1_bypass_safety_guard_never_bypasses_exploits(tmp_path):
     assert int(await fake_redis.get("net:stats:evaluated") or 0) == 1
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_l1_bypass_quic_udp_port_443(tmp_path):
+    """Verify that QUIC (HTTP/3 over UDP port 443) with high entropy is bypassed as benign."""
+    db_file = str(tmp_path / "test_quic.db")
+    await database.init_db(db_file)
+    settings.DATABASE_PATH = db_file
+    settings.SIMULATION_MODE = True
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    worker = JevWorker()
+    worker._redis = fake_redis
+    client = httpx.AsyncClient()
+
+    # Replicate event #2522: UDP 443 to Cloudflare with high entropy
+    quic_event = {
+        "timestamp": 1727481600.0,
+        "protocol": "UDP",
+        "src_ip": "192.168.1.98",
+        "dst_ip": "104.19.222.79",
+        "src_port": 54321,
+        "dst_port": 443,
+        "domain_or_sni": "",
+        "payload_snippet": "\x1a\xbc\xde\xf0randomciphertexthere",
+        "payload_len": 1200,
+        "is_quic": True,
+        "entropy": 7.85,
+    }
+
+    res = await worker.process_event(json.dumps(quic_event), client)
+    assert res is not None
+    assert res["threat_category"] == "benign"
+    assert res["cached"] is True
+    assert res["severity"] == 0.0
+
+    # Must NOT have called Jev! Evaluated count stays 0!
+    assert int(await fake_redis.get("net:stats:evaluated") or 0) == 0
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_l1_bypass_trusted_cdn_networks(tmp_path):
+    """Verify that connections to Cloudflare, Google, Apple, and AWS on port 443/80 are bypassed."""
+    db_file = str(tmp_path / "test_cdn.db")
+    await database.init_db(db_file)
+    settings.DATABASE_PATH = db_file
+    settings.SIMULATION_MODE = True
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    worker = JevWorker()
+    worker._redis = fake_redis
+    client = httpx.AsyncClient()
+
+    # Google IP
+    google_event = {
+        "timestamp": 1727481600.0,
+        "protocol": "TCP",
+        "src_ip": "192.168.1.98",
+        "dst_ip": "142.251.211.74",
+        "src_port": 52140,
+        "dst_port": 443,
+        "domain_or_sni": "",
+        "payload_snippet": "data",
+        "payload_len": 500,
+        "entropy": 7.5,
+    }
+
+    res = await worker.process_event(json.dumps(google_event), client)
+    assert res is not None
+    assert res["threat_category"] == "benign"
+    assert res["cached"] is True
+    assert int(await fake_redis.get("net:stats:evaluated") or 0) == 0
+
+    await client.aclose()
+

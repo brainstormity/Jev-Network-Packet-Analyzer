@@ -143,16 +143,19 @@ def extract_packet_state(packet: Any) -> Optional[Dict[str, Any]]:
     timestamp = float(getattr(packet, "time", time.time()))
 
     protocol = "OTHER"
+    src_port = 0
     dst_port = 0
     payload = b""
 
     if packet.haslayer(TCP):
         protocol = "TCP"
+        src_port = int(packet[TCP].sport)
         dst_port = int(packet[TCP].dport)
         if packet.haslayer(Raw):
             payload = bytes(packet[Raw].load)
     elif packet.haslayer(UDP):
         protocol = "UDP"
+        src_port = int(packet[UDP].sport)
         dst_port = int(packet[UDP].dport)
         if packet.haslayer(Raw):
             payload = bytes(packet[Raw].load)
@@ -176,16 +179,21 @@ def extract_packet_state(packet: Any) -> Optional[Dict[str, Any]]:
     # Detect TLS Application Data (RFC 5246: ContentType 0x17 = 23, Version 0x03)
     is_tls_app_data = len(payload) >= 3 and payload[0] == 0x17 and payload[1] == 0x03
 
+    # Detect QUIC / HTTP/3 (RFC 9000: encrypted transport over UDP port 443)
+    is_quic = protocol == "UDP" and (dst_port == 443 or src_port == 443)
+
     return {
         "timestamp": timestamp,
         "protocol": protocol,
         "src_ip": src_ip,
         "dst_ip": dst_ip,
+        "src_port": src_port,
         "dst_port": dst_port,
         "domain_or_sni": domain_or_sni or "",
         "payload_snippet": payload_snippet,
         "payload_len": len(payload),
         "is_tls_app_data": is_tls_app_data,
+        "is_quic": is_quic,
         "entropy": entropy,
     }
 

@@ -42,21 +42,21 @@ Edit `.env` with your [TypeSafe Jev](https://typesafe.ai) and [Resend](https://r
 
 ### 2. Choose How to Run
 
-#### 🍏 Option A: macOS Users (Captures Real Mac Wi-Fi `en0`)
+## macOS Users (Captures Real Mac Wi-Fi `en0`)
 On macOS, Docker Desktop isolates containers inside a virtual machine and cannot see physical Wi-Fi traffic. Run natively on your Mac using the turnkey script:
 ```bash
 ./start-mac.sh
 ```
 *(Starts Redis in Docker and runs NetworkSentinel directly on macOS with `/dev/bpf*` raw socket access).*
 
-#### 🐧 Option B: Linux Users (Captures Physical Wire in Docker)
+## Linux Users (Captures Physical Wire in Docker)
 On Linux servers, mini PCs, or Raspberry Pis, Docker runs directly on the host kernel:
 ```bash
 docker compose -f docker-compose.linux.yml up -d --build
 ```
 *(Runs Redis and NetworkSentinel with `network_mode: host` to capture physical `eth0`/`wlan0` wire packets directly).*
 
-#### 🏠 Option C: Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)
+## Whole-Home Network Monitoring (All Devices: Smart TVs, Phones, IoT)
 To monitor every device in your household (smart TVs, phones, tablets, IoT bulbs), configure Sentinel as your **Home Router DNS/Gateway** or connect via **Switch Port Mirroring (SPAN)**.  
 👉 Follow the complete step-by-step setup in [**docs.md: Whole-Home Network Monitoring Guide**](docs.md#73-whole-home-network-monitoring-all-devices-smart-tvs-phones-iot).
 

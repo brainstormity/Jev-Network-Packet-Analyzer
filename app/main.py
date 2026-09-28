@@ -413,6 +413,48 @@ async def simulate_event(req: SimulatePacketRequest) -> Dict[str, Any]:
     }
 
 
+@app.post("/api/maintenance/reclassify-c2")
+async def reclassify_c2_false_flags() -> Dict[str, Any]:
+    """Reclassify historical benign QUIC (HTTP/3) and standard web traffic from c2_beacon to benign."""
+    import aiosqlite
+    path = settings.DATABASE_PATH
+    count = 0
+    async with aiosqlite.connect(path) as db:
+        cursor = await db.execute("""
+            UPDATE events 
+            SET threat_category = 'benign',
+                severity = 0.0,
+                is_suspicious = 0.01,
+                category_confidence = 0.99,
+                cached = 1
+            WHERE threat_category = 'c2_beacon' 
+              AND is_simulated = 0
+              AND (dst_port IN (443, 8443, 80, 8080) OR protocol = 'UDP')
+        """)
+        count = cursor.rowcount
+        await db.commit()
+
+    # Recalculate threats count in Redis
+    try:
+        r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        async with aiosqlite.connect(path) as db:
+            cur = await db.execute(
+                "SELECT count(*) FROM events WHERE threat_category != 'benign' AND alert_dispatched = 1"
+            )
+            real_threats = (await cur.fetchone())[0]
+        await r.set("net:stats:threats", real_threats)
+        await r.aclose()
+    except Exception:
+        pass
+
+    return {
+        "status": "success",
+        "reclassified_events": count,
+        "message": f"Successfully reclassified {count} false C2 beacon events to benign.",
+    }
+
+
+
 # --- WebSocket Live Events Stream ---
 @app.websocket("/ws/live-events")
 async def websocket_live_events(websocket: WebSocket) -> None:

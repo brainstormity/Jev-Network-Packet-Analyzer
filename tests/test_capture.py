@@ -77,3 +77,21 @@ def test_extract_packet_state_structure():
     assert state["domain_or_sni"] == "c2-checkin.dynamic-dns.net"
     assert "GET /beacon" in state["payload_snippet"]
     assert state["entropy"] > 0.0
+    assert "src_port" in state
+    assert "is_quic" in state
+
+
+def test_extract_packet_state_quic_udp():
+    # Simulated UDP port 443 QUIC packet
+    payload = b"\xc0\x00\x00\x01\x08testquicencryptedpayload12345"
+    pkt = IP(src="192.168.1.98", dst="104.19.222.79") / UDP(sport=54321, dport=443) / Raw(payload)
+
+    state = extract_packet_state(pkt)
+    assert state is not None
+    assert state["protocol"] == "UDP"
+    assert state["src_ip"] == "192.168.1.98"
+    assert state["dst_ip"] == "104.19.222.79"
+    assert state["src_port"] == 54321
+    assert state["dst_port"] == 443
+    assert state["is_quic"] is True
+

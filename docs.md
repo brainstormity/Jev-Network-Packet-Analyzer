@@ -162,24 +162,28 @@ On modern high-speed networks, a single HTTPS download, video stream, or backgro
 2. High network latency.
 3. False flags caused by encrypted ciphertext mimicking high entropy.
 
-### 4.2 L1 Pre-Filter Rules & TLS Application Data Bypass
+### 4.2 L1 Pre-Filter Rules: TLS, QUIC (HTTP/3), & Trusted CDNs
 The L1 Pre-Filter runs in memory before Redis ingestion or Jev evaluation:
-1. **TLS Application Data Bypass (`\x17\x03\x01` - `\x17\x03\x03`)**:
-   Once a TLS connection completes its initial handshake, all subsequent packets contain **encrypted ciphertext**. An AI model cannot decrypt AES-GCM or ChaCha20 payloads. NetworkSentinel inspects the initial connection handshake (SNI / DNS) once, and bypasses subsequent encrypted application data on standard TLS ports (443, 8443, 993, 465).
-2. **Zero-Payload TCP Discard**:
-   Standard TCP control packets (ACK, FIN-ACK, RST) with 0 payload bytes on standard ports have no content to analyze and are instantly marked benign.
+1. **QUIC / HTTP/3 UDP Port 443 Encrypted Stream Bypass**:
+   Modern web browsers (Chrome, Safari, Firefox) communicate with major websites over **QUIC / HTTP/3** using UDP port 443. QUIC payloads are encrypted with TLS 1.3, resulting in high Shannon entropy (~7.80 / 8.0) and encrypted framing without plaintext SNIs in mid-stream packets. NetworkSentinel recognizes standard UDP port 443 web transport and bypasses it as benign (`l1_quic_stream`), preventing false C2 beacon alerts.
+2. **TLS Application Data Bypass (`\x17\x03\x01` - `\x17\x03\x03`)**:
+   Once a TCP TLS connection completes its initial handshake, all subsequent packets contain encrypted ciphertext. NetworkSentinel inspects the initial connection handshake (SNI / DNS) once, and bypasses subsequent encrypted application data on standard TLS ports (443, 8443, 993, 465) in both client-to-server and server-to-client directions.
+3. **Trusted Major CDN & Cloud Network Recognition**:
+   Legitimate global infrastructure (Cloudflare, Google, Apple, AWS CloudFront, Fastly, Akamai, Azure) hosts high-volume encrypted web and API traffic. NetworkSentinel evaluates destination and source IP addresses against curated CIDR blocks on standard web ports (80, 443, 8080, 8443), instantly marking them benign (`l1_trusted_cdn`) without burning Jev API tokens.
+4. **Zero-Payload TCP Discard**:
+   Standard TCP control packets (ACK, FIN-ACK, RST) with 0 payload bytes on standard ports have no content to analyze and are instantly marked benign (`l1_zero_payload`).
 
 ### 4.3 Bidirectional Redis Flow Tracking
 In standard packet capture, outgoing packets go from client to server (`Client -> Server`), but replies return with reversed sockets (`Server -> Client`).
 * **Previous Limitation**: Caching only `dst_ip` caused server responses to miss the cache because `dst_ip` matched the local host IP.
-* **Bidirectional Flow Solution**: NetworkSentinel generates a deterministic flow key using sorted IP pairs:
+* **Bidirectional Flow Solution**: NetworkSentinel extracts both `src_port` and `dst_port` and generates a deterministic flow key using sorted IP pairs:
   $$\text{Key} = \text{cache:flow:} + \min(\text{IP}_A, \text{IP}_B) + \text{:} + \max(\text{IP}_A, \text{IP}_B)$$
   Both outbound requests and inbound replies share the identical flow key in Redis, resulting in **100% cache hit rates on return traffic**.
 
 ### 4.4 Safety Guard: Zero False Negatives
 The L1 Pre-Filter contains a strict **Exploit Guard**:
-* If a packet contains exploit keywords (e.g., `' UNION SELECT`, `/etc/passwd`, `/bin/sh`, `eval(`, `../`), C2 keywords (`beacon`, `heartbeat`), suspicious dynamic DNS domains (`duckdns`, `ngrok`), or high entropy on plain UDP port 53:
-* **The packet NEVER bypasses L1.** It is immediately routed to TypeSafe Jev System One for deep cognitive triage and alerting.
+* If a packet contains exploit keywords (e.g., `' UNION SELECT`, `/etc/passwd`, `/bin/sh`, `eval(`, `../`), explicit C2 stager tokens (`stage=`, `beacon`, `uuid=`, `heartbeat`), suspicious dynamic DNS domains (`duckdns`, `ngrok`), or high entropy on plain UDP port 53:
+* **The packet NEVER bypasses L1.** It is immediately routed to TypeSafe Jev System One for deep cognitive triage and alerting. Security simulation drills are also guaranteed full evaluation.
 
 ---
 

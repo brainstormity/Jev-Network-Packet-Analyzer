@@ -54,4 +54,4 @@ echo "   Capturing REAL live packets on physical interface: ${DEFAULT_IFACE}"
 echo "   (Raw socket packet capture on macOS requires sudo/root access)"
 echo "----------------------------------------------------------"
 
-sudo CAPTURE_INTERFACE="${DEFAULT_IFACE}" "$PYTHON_CMD" -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+sudo CAPTURE_INTERFACE="${DEFAULT_IFACE}" "$PYTHON_CMD" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

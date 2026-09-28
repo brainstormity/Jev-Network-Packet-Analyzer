@@ -36,123 +36,136 @@
 
 ---
 
-## 3. Step-by-Step Setup Guide
+## 3. Quick Start with Docker Compose (Recommended)
 
-### 3.1 Clone & Virtual Environment
+The fastest and most reliable way to run NetworkSentinel is using **Docker Compose**. It automatically packages all low-level networking libraries (`libpcap-dev`, `tcpdump`), handles capability privileges for raw packet sniffing, sets up **Redis 7**, and runs the FastAPI backend and Jev triage worker without manual dependency management.
 
+### Step 1: Install Docker
+If you do not have Docker installed yet, download and install **Docker Desktop** (or Docker Engine on Linux):
+* **macOS / Windows / Linux:** Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop)
+* Make sure Docker Desktop is open and running before proceeding.
+
+### Step 2: Clone Repository & Enter Directory
+Open your terminal and run:
 ```bash
 git clone https://github.com/your-username/network-sentinel.git
-cd network-sentinel
-
-# Create and activate Python virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+cd "network-sentinel"
 ```
 
-### 3.2 Network Interface Identification
-
-Identify the network interface you want to monitor:
-
-* **Linux:**
-  ```bash
-  ip link show
-  # or
-  ip a
-  ```
-  *(Typical interfaces: `eth0`, `enp3s0`, `wlan0`)*
-
-* **macOS:**
-  ```bash
-  ifconfig -l
-  ```
-  *(Typical interfaces: `en0` for Wi-Fi, `en1` for Ethernet)*
-
-### 3.3 Grant Linux Capabilities (No Root Required)
-
-To allow Python to capture raw packets without running the entire application as `root`:
-
-```bash
-sudo setcap cap_net_raw,cap_net_admin=eip $(which python3)
-```
-
-*(Note: If using a virtual environment, target the virtual environment's Python binary: `sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))`)*
-
-### 3.4 Configure Environment Variables
-
-Copy the provided example template and supply your keys:
-
+### Step 3: Configure Environment File
+Create your local `.env` configuration from the provided template:
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
-
+Open `.env` in any text editor (e.g. `nano .env` or VS Code) and configure your keys:
 ```ini
-# TypeSafe Jev Settings
+# TypeSafe Jev API Key (Get yours at https://typesafe.ai)
 TYPESAFE_API_KEY=your_actual_typesafe_key_here
 JEV_API_URL=https://api.typesafe.ai/v1/systemone
 JEV_MODEL=jev-latest
 
-# Network Interface Settings
-CAPTURE_INTERFACE=eth0    # Leave empty to auto-detect default route
-BPF_FILTER=ip and not net 127.0.0.0/8 and not udp port 5353 and not udp port 1900
-
-# Redis Configuration
-REDIS_URL=redis://localhost:6379/0
-
-# Alerting Thresholds
-ALERT_THRESHOLD_NOUL=0.85
-ALERT_MIN_SEVERITY=3
-
-# Resend Settings
-RESEND_API_KEY=re_your_resend_api_key
+# Resend Email Settings (Optional: leave default for simulated alert logging)
+RESEND_API_KEY=re_your_resend_api_key_here
 RESEND_FROM_EMAIL=security@your-verified-domain.com
-ALERT_RECIPIENT=admin@yourcompany.com
+ALERT_RECIPIENT=your_notification_email@gmail.com
 ```
+*(Note: If you don't have API keys yet, NetworkSentinel automatically operates in intelligent simulation mode so you can still test all dashboards, rate pacing, and threat scenarios immediately).*
 
-### 3.5 Start Redis
-
-If running Redis locally:
-
+### Step 4: Build and Start Containers
+Run the following command to build the image and start Redis and NetworkSentinel in the background:
 ```bash
-# macOS (Homebrew)
-brew services start redis
-
-# Ubuntu/Debian
-sudo systemctl start redis-server
+docker compose up -d --build
 ```
+*(If you are on an older Docker installation, you can use `docker-compose up -d --build`).*
 
-### 3.6 Run the Application
-
+### Step 5: View Real-Time Logs
+To verify that all services started cleanly and packet capture is active:
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+docker compose logs -f sentinel
+```
+*(Press `Ctrl + C` at any time to exit log streaming; containers will keep running).*
+
+### Step 6: Open the Dashboard
+Open your web browser and navigate to:
+```
+http://localhost:8000
+```
+You will be greeted by the live telemetry dashboard, real-time KPI cards, and dynamic Chart.js visualizations!
+
+### Step 7: Stopping the Application
+When you want to stop the system:
+```bash
+docker compose down
 ```
 
-Open your browser at **`http://localhost:8000`** to view the live dashboard.
+> **Host Network Sniffing (Linux Users):**
+> By default, Docker monitors bridge container network traffic. If you are on Linux and want NetworkSentinel to capture your physical machine's network card (e.g., `eth0`), uncomment `network_mode: host` in `docker-compose.yml`.
 
 ---
 
-## 4. Running with Docker Compose (Zero-Config)
+## 4. Manual Local Installation (Alternative without Docker)
 
-Docker Compose spins up Redis alongside NetworkSentinel with full networking capabilities:
+Follow this step-by-step guide if you prefer running NetworkSentinel directly on your host operating system using Python and a local Redis instance.
 
+### Step 1: Install System Prerequisites
+* **Python 3.11+**
+* **Redis Server**
+* **libpcap** (for raw packet sniffing):
+  * **Debian/Ubuntu:** `sudo apt-get install -y libpcap-dev tcpdump libcap2-bin`
+  * **macOS:** `brew install libpcap redis`
+  * **Arch Linux:** `sudo pacman -S libpcap tcpdump redis`
+
+### Step 2: Set Up Python Virtual Environment
+Navigate to the project root and create an isolated virtual environment:
 ```bash
-# 1. Prepare environment
-cp .env.example .env
-# Fill in your TYPESAFE_API_KEY and RESEND_API_KEY in .env
+# Create virtual environment
+python3 -m venv .venv
 
-# 2. Build and launch
-docker-compose up -d --build
+# Activate virtual environment
+# On macOS / Linux:
+source .venv/bin/activate
 
-# 3. View live logs
-docker-compose logs -f sentinel
+# Install all pinned dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-> **Host Network Sniffing in Docker:**
-> To sniff the host machine's physical network adapter directly rather than container bridge traffic, uncomment `network_mode: host` in `docker-compose.yml`.
+### Step 3: Identify Your Network Interface
+Find the exact name of the network interface you want to monitor:
+* **Linux:** `ip a` (commonly `eth0`, `enp3s0`, or `wlan0`)
+* **macOS:** `ifconfig -l` (commonly `en0` for Wi-Fi, `en1` for Ethernet)
+
+### Step 4: Configure Raw Socket Permissions
+Capturing network packets at Layer 3/4 requires raw socket privileges:
+* **Linux (Recommended without root):** Grant Linux capabilities directly to Python:
+  ```bash
+  sudo setcap cap_net_raw,cap_net_admin=eip $(readlink -f $(which python3))
+  ```
+* **macOS:** Run the application using `sudo` with your virtual environment's Python, or set `SIMULATION_MODE=true` in `.env` if testing without root privileges.
+
+### Step 5: Create and Configure `.env`
+```bash
+cp .env.example .env
+```
+Edit `.env` to match your interface and credentials:
+```ini
+CAPTURE_INTERFACE=eth0    # Or en0 on macOS, or leave empty for auto-detect
+REDIS_URL=redis://localhost:6379/0
+TYPESAFE_API_KEY=your_actual_typesafe_key_here
+```
+
+### Step 6: Start Redis Service
+Ensure Redis is running locally:
+* **macOS (Homebrew):** `brew services start redis`
+* **Linux (systemd):** `sudo systemctl start redis-server`
+* **Test connection:** `redis-cli ping` (should output `PONG`)
+
+### Step 7: Launch NetworkSentinel
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+Open **`http://localhost:8000`** in your browser.
 
 ---
 

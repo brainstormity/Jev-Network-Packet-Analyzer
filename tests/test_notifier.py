@@ -76,6 +76,86 @@ async def test_alert_cooldown_throttling(tmp_path):
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_concurrent_alert_dispatch_deduplication(tmp_path):
+    """Verify that multiple simultaneous alerts for the same threat and IP only dispatch ONCE."""
+    db_file = str(tmp_path / "test_concurrent.db")
+    await database.init_db(db_file)
+    settings.DATABASE_PATH = db_file
+
+    respx.post("https://api.resend.com/emails").respond(
+        status_code=200, json={"id": "email_concurrent_win"}
+    )
+
+    from app.notifier import _in_flight_cooldowns
+    _in_flight_cooldowns.clear()
+
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    event = {
+        "src_ip": "10.99.99.1",
+        "dst_ip": "198.51.100.1",
+        "dst_port": 80,
+        "protocol": "TCP",
+        "threat_category": "EXPLOIT_ATTEMPT",
+        "severity": 4.0,
+        "is_suspicious": 0.99,
+        "payload_snippet": "GET /api/test?id=1",
+        "entropy": 3.5,
+        "id": 99,
+    }
+
+    import asyncio
+    # Launch 5 concurrent dispatches
+    results = await asyncio.gather(
+        *[dispatch_alert(event, fake_redis) for _ in range(5)]
+    )
+
+    sent_count = sum(1 for r in results if r.get("status") in ("sent", "mock_sent"))
+    throttled_count = sum(1 for r in results if r.get("status") == "throttled")
+
+    # Exactly 1 should win, the other 4 MUST be throttled
+    assert sent_count == 1
+    assert throttled_count == 4
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_database_fallback_cooldown_without_redis(tmp_path):
+    """Verify that even when Redis is down or unavailable, DB history throttles duplicate alerts."""
+    db_file = str(tmp_path / "test_db_fallback.db")
+    await database.init_db(db_file)
+    settings.DATABASE_PATH = db_file
+    settings.RESEND_API_KEY = "re_test_key"
+
+    respx.post("https://api.resend.com/emails").respond(
+        status_code=200, json={"id": "email_db_win"}
+    )
+
+    event = {
+        "src_ip": "172.16.0.4",
+        "dst_ip": "198.51.100.5",
+        "dst_port": 4444,
+        "protocol": "TCP",
+        "threat_category": "c2_beacon",
+        "severity": 3.8,
+        "is_suspicious": 0.95,
+        "payload_snippet": "heartbeat",
+        "entropy": 4.0,
+        "id": 101,
+    }
+
+    # First dispatch with redis_client=None
+    res1 = await dispatch_alert(event, redis_client=None)
+    assert res1.get("status") == "sent"
+
+    # Second dispatch with redis_client=None should be throttled by database cooldown check
+    res2 = await dispatch_alert(event, redis_client=None)
+    assert res2.get("status") == "throttled"
+    assert res2.get("cooldown") is True
+
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_resend_api_dispatch_success(tmp_path):
     db_file = str(tmp_path / "test_notifier_resend.db")
     await database.init_db(db_file)

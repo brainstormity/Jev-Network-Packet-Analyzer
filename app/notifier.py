@@ -1,7 +1,9 @@
 """Resend email notification engine with anti-spam cooldown throttling."""
 
+import asyncio
 import html
 import logging
+import time
 from typing import Any, Dict, Optional
 import httpx
 
@@ -11,6 +13,10 @@ from app import database
 logger = logging.getLogger(__name__)
 
 RESEND_API_URL = "https://api.resend.com/emails"
+
+# Concurrency lock & in-memory anti-duplicate tracking
+_cooldown_lock = asyncio.Lock()
+_in_flight_cooldowns: Dict[str, float] = {}
 
 
 def generate_alert_html(event: Dict[str, Any]) -> str:
@@ -108,27 +114,68 @@ async def dispatch_alert(
     client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
     """Evaluate cooldown and send email alert via Resend REST API."""
-    src_ip = event.get("src_ip", "0.0.0.0")
-    threat_category = event.get("threat_category", "unknown")
+    src_ip = str(event.get("src_ip", "0.0.0.0")).strip()
+    raw_category = str(event.get("threat_category", "unknown")).strip()
+    threat_category = raw_category.lower()
     severity = float(event.get("severity", 0.0))
 
-    cooldown_key = f"{settings.REDIS_ALERT_COOLDOWN_PREFIX}{src_ip}:{threat_category}"
+    cooldown_key = f"{settings.REDIS_ALERT_COOLDOWN_PREFIX}{src_ip}:{raw_category}"
+    norm_cooldown_key = f"{settings.REDIS_ALERT_COOLDOWN_PREFIX}{src_ip}:{threat_category}"
 
-    # 1. Anti-spam cooldown check (5 minutes / 300s TTL)
-    try:
-        is_cooldown = await redis_client.get(cooldown_key)
-        if is_cooldown:
+    # 1. Multi-tier anti-spam cooldown check (5 minutes / 300s TTL)
+    now = time.time()
+    is_throttled = False
+
+    async with _cooldown_lock:
+        # Tier 1: In-process memory deduplication
+        expired_keys = [k for k, exp in _in_flight_cooldowns.items() if now > exp]
+        for k in expired_keys:
+            _in_flight_cooldowns.pop(k, None)
+
+        if norm_cooldown_key in _in_flight_cooldowns or cooldown_key in _in_flight_cooldowns:
+            is_throttled = True
+
+        # Tier 2: Redis Atomic SETNX (Set if Not eXists with 300s TTL)
+        if not is_throttled and redis_client is not None:
+            try:
+                # Check if key already exists in Redis
+                val = await redis_client.get(norm_cooldown_key)
+                if val:
+                    is_throttled = True
+                else:
+                    # Atomic acquire
+                    acquired = await redis_client.set(norm_cooldown_key, "1", nx=True, ex=300)
+                    if not acquired:
+                        is_throttled = True
+                    else:
+                        if cooldown_key != norm_cooldown_key:
+                            await redis_client.set(cooldown_key, "1", ex=300)
+            except Exception as e:
+                logger.warning("Redis atomic cooldown check failed: %s", e)
+
+        # Tier 3: Database fallback check (survives Redis restarts/reboots)
+        if not is_throttled:
+            try:
+                db_throttled = await database.is_alert_in_cooldown(
+                    src_ip, threat_category, cooldown_seconds=300
+                )
+                if db_throttled:
+                    is_throttled = True
+            except Exception as e:
+                logger.warning("Database cooldown check failed: %s", e)
+
+        if is_throttled:
             logger.info(
                 "Alert throttled for %s [%s] (5-min cooldown active)",
                 src_ip,
-                threat_category,
+                raw_category,
             )
             await database.save_alert(
                 {
                     "event_id": event.get("id"),
                     "src_ip": src_ip,
                     "dst_ip": event.get("dst_ip"),
-                    "threat_category": threat_category,
+                    "threat_category": raw_category,
                     "severity": severity,
                     "recipient": settings.ALERT_RECIPIENT,
                     "status": "throttled",
@@ -137,14 +184,11 @@ async def dispatch_alert(
                 }
             )
             return {"status": "throttled", "cooldown": True}
-    except Exception as e:
-        logger.warning("Redis cooldown lookup failed: %s", e)
 
-    # Set 300-second cooldown immediately
-    try:
-        await redis_client.set(cooldown_key, "1", ex=300)
-    except Exception as e:
-        logger.warning("Could not set Redis alert cooldown: %s", e)
+        # Mark in-process reservation for 300 seconds
+        _in_flight_cooldowns[norm_cooldown_key] = now + 300.0
+        if cooldown_key != norm_cooldown_key:
+            _in_flight_cooldowns[cooldown_key] = now + 300.0
 
     # 2. Check if Resend is configured
     if not settings.is_resend_configured:
@@ -177,7 +221,7 @@ async def dispatch_alert(
     payload = {
         "from": f"Network Sentinel <{settings.RESEND_FROM_EMAIL}>",
         "to": [settings.ALERT_RECIPIENT],
-        "subject": f"🚨 [Alert] High Severity Threat Detected: {threat_category.upper()} (Risk: {severity:.1f}/4.0)",
+        "subject": f"🚨 [Alert] High Severity Threat Detected: {raw_category.upper()} (Risk: {severity:.1f}/4.0)",
         "html": generate_alert_html(event),
     }
 
@@ -197,7 +241,7 @@ async def dispatch_alert(
                     "event_id": event.get("id"),
                     "src_ip": src_ip,
                     "dst_ip": event.get("dst_ip"),
-                    "threat_category": threat_category,
+                    "threat_category": raw_category,
                     "severity": severity,
                     "recipient": settings.ALERT_RECIPIENT,
                     "status": "sent",
@@ -209,12 +253,21 @@ async def dispatch_alert(
         else:
             err_text = response.text
             logger.error("Resend API rejected dispatch: HTTP %d %s", response.status_code, err_text)
+            _in_flight_cooldowns.pop(norm_cooldown_key, None)
+            _in_flight_cooldowns.pop(cooldown_key, None)
+            if redis_client is not None:
+                try:
+                    await redis_client.delete(norm_cooldown_key)
+                    if cooldown_key != norm_cooldown_key:
+                        await redis_client.delete(cooldown_key)
+                except Exception:
+                    pass
             await database.save_alert(
                 {
                     "event_id": event.get("id"),
                     "src_ip": src_ip,
                     "dst_ip": event.get("dst_ip"),
-                    "threat_category": threat_category,
+                    "threat_category": raw_category,
                     "severity": severity,
                     "recipient": settings.ALERT_RECIPIENT,
                     "status": "failed",
@@ -225,12 +278,21 @@ async def dispatch_alert(
             return {"status": "failed", "error": err_text}
     except Exception as e:
         logger.error("Exception dispatching alert via Resend: %s", e)
+        _in_flight_cooldowns.pop(norm_cooldown_key, None)
+        _in_flight_cooldowns.pop(cooldown_key, None)
+        if redis_client is not None:
+            try:
+                await redis_client.delete(norm_cooldown_key)
+                if cooldown_key != norm_cooldown_key:
+                    await redis_client.delete(cooldown_key)
+            except Exception:
+                pass
         await database.save_alert(
             {
                 "event_id": event.get("id"),
                 "src_ip": src_ip,
                 "dst_ip": event.get("dst_ip"),
-                "threat_category": threat_category,
+                "threat_category": raw_category,
                 "severity": severity,
                 "recipient": settings.ALERT_RECIPIENT,
                 "status": "failed",

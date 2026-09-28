@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_cooldown ON alerts(src_ip, threat_category, created_at);
 """
 
 
@@ -127,6 +128,35 @@ async def save_alert(alert: Dict[str, Any], db_path: Optional[str] = None) -> in
         cursor = await db.execute(sql, params)
         await db.commit()
         return cursor.lastrowid or 0
+
+
+async def is_alert_in_cooldown(
+    src_ip: str,
+    threat_category: str,
+    cooldown_seconds: int = 300,
+    db_path: Optional[str] = None,
+) -> bool:
+    """Check if an alert for this src_ip and threat_category was already dispatched recently in SQLite."""
+    path = db_path or settings.DATABASE_PATH
+    sql = """
+    SELECT id FROM alerts
+    WHERE LOWER(src_ip) = LOWER(?)
+      AND LOWER(threat_category) = LOWER(?)
+      AND status IN ('sent', 'mock_sent')
+      AND (strftime('%s', 'now') - strftime('%s', created_at)) < ?
+    ORDER BY id DESC
+    LIMIT 1
+    """
+    try:
+        async with aiosqlite.connect(path) as db:
+            async with db.execute(
+                sql, (src_ip.strip(), threat_category.strip(), cooldown_seconds)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row is not None
+    except Exception as e:
+        logger.warning("Error checking DB alert cooldown: %s", e)
+        return False
 
 
 async def get_recent_events(

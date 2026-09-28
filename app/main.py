@@ -188,6 +188,22 @@ async def serve_dashboard(request: Request) -> Any:
     )
 
 
+@app.get("/alerts", response_class=HTMLResponse)
+async def serve_alerts_page(request: Request) -> Any:
+    """Serve dedicated, full-screen Alerts & Incident Dispatch Center page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="alerts.html",
+        context={
+            "jev_configured": settings.is_jev_configured,
+            "resend_configured": settings.is_resend_configured,
+            "jev_model": settings.JEV_MODEL,
+            "alert_recipient": settings.ALERT_RECIPIENT,
+            "resend_from_email": settings.RESEND_FROM_EMAIL,
+        },
+    )
+
+
 # --- REST API Endpoints ---
 @app.get("/health")
 async def health_check() -> Dict[str, Any]:
@@ -285,9 +301,19 @@ async def get_events(
 
 
 @app.get("/api/alerts")
-async def get_alerts(limit: int = Query(default=30, ge=1, le=200)) -> List[Dict[str, Any]]:
-    """Retrieve recent alerts dispatched or throttled."""
-    return await database.get_recent_alerts(limit=limit)
+async def get_alerts(
+    limit: int = Query(default=50, ge=1, le=200),
+    status: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+) -> List[Dict[str, Any]]:
+    """Retrieve recent alerts dispatched or throttled with optional status and search filtering."""
+    return await database.get_recent_alerts(limit=limit, status=status, search=search)
+
+
+@app.get("/api/alerts/stats")
+async def get_alert_stats() -> Dict[str, Any]:
+    """Retrieve summary metrics for the alert dispatch center."""
+    return await database.get_alert_stats()
 
 
 @app.get("/api/alerts/{alert_id}")

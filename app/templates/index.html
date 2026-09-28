@@ -86,13 +86,13 @@
         <span>Simulate Threat</span>
       </button>
 
-      <button id="btn-view-alerts" class="relative bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-2 rounded-lg text-xs font-medium transition cursor-pointer flex items-center space-x-1.5">
+      <a href="/alerts" id="btn-view-alerts" class="relative bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-2 rounded-lg text-xs font-medium transition cursor-pointer flex items-center space-x-1.5 no-underline hover:border-amber-500/50">
         <svg class="w-4 h-4 text-threatOrange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
         </svg>
-        <span>Alerts</span>
+        <span>Alerts Log</span>
         <span id="alert-counter-badge" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-threatRed text-white">0</span>
-      </button>
+      </a>
     </div>
   </header>
 
@@ -509,22 +509,6 @@
     </div>
   </div>
 
-  <!-- Alerts Drawer Modal -->
-  <div id="modal-alerts" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="glass-card bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[85vh] flex flex-col">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-        <div class="flex items-center space-x-2">
-          <span class="w-3 h-3 rounded-full bg-threatOrange"></span>
-          <h3 class="text-base font-bold text-white">Resend Dispatch & Cooldown Log</h3>
-        </div>
-        <button id="btn-close-alerts" class="text-slate-400 hover:text-white">&times;</button>
-      </div>
-      <div class="mt-4 overflow-y-auto flex-1 space-y-2.5 font-mono text-xs" id="alerts-container">
-        <p class="text-slate-500 py-6 text-center">Loading alert dispatch records...</p>
-      </div>
-    </div>
-  </div>
-
   <!-- Dashboard Script Logic -->
   <script>
     // State management
@@ -852,13 +836,6 @@
 
     const modalInspect = document.getElementById('modal-inspect');
     document.getElementById('btn-close-inspect').onclick = () => modalInspect.classList.add('hidden');
-
-    const modalAlerts = document.getElementById('modal-alerts');
-    document.getElementById('btn-view-alerts').onclick = async () => {
-      modalAlerts.classList.remove('hidden');
-      await loadAlerts();
-    };
-    document.getElementById('btn-close-alerts').onclick = () => modalAlerts.classList.add('hidden');
 
     // Simulate Injection Helper
     async function injectScenario(scenarioName) {
@@ -1245,62 +1222,6 @@
         console.error('Error fetching alert:', e);
       }
     };
-
-    // Load Alert Dispatch History
-    async function loadAlerts() {
-      const container = document.getElementById('alerts-container');
-      try {
-        const res = await fetch('/api/alerts?limit=50');
-        if (res.ok) {
-          const list = await res.json();
-          if (list.length === 0) {
-            container.innerHTML = '<p class="text-slate-500 py-6 text-center">No alerts recorded yet. Simulate an exploit or C2 beacon to test.</p>';
-            return;
-          }
-          container.innerHTML = list.map(a => {
-            const statusClass = a.status === 'sent' || a.status === 'mock_sent' ? 'text-emerald-400 bg-emerald-950/40 border-emerald-800/60' : (a.status === 'throttled' ? 'text-amber-400 bg-amber-950/40 border-amber-800/60' : 'text-threatRed bg-red-950/40 border-red-800/60');
-            const target = a.dst_ip ? `${a.dst_ip}:${a.dst_port || 0}` : 'Unknown destination';
-            const alertJsonEscaped = JSON.stringify(a).replace(/"/g, '&quot;');
-            return `
-              <div class="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-600 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div class="flex-1">
-                  <div class="flex items-center space-x-2">
-                    <span class="font-bold text-white uppercase text-sm">${a.threat_category}</span>
-                    ${a.is_simulated ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-900/80 text-purple-300 border border-purple-500/40">SIMULATED DRILL</span>' : ''}
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${a.severity >= 3.5 ? 'bg-red-500/20 text-threatRed border border-red-500/30' : 'bg-orange-500/20 text-threatOrange border border-orange-500/30'}">Risk: ${a.severity.toFixed(1)}/4.0</span>
-                    <span class="text-xs text-cyan-300 font-mono">${a.src_ip}</span>
-                    <span class="text-slate-400 text-xs font-mono">&rarr; ${target}</span>
-                  </div>
-                  <div class="text-[11px] text-slate-400 mt-1 font-mono flex flex-wrap items-center gap-x-2">
-                    <span>To: <strong class="text-slate-300">${a.recipient}</strong></span>
-                    <span>&bull;</span>
-                    <span>${new Date(a.created_at).toLocaleString()}</span>
-                    ${a.resend_id ? `<span>&bull; Resend ID: <span class="text-cyan-400">${a.resend_id}</span></span>` : ''}
-                    ${a.error_message ? `<span>&bull; <span class="text-amber-400">${a.error_message}</span></span>` : ''}
-                  </div>
-                  ${a.payload_snippet ? `
-                    <div class="mt-2 text-[10px] font-mono text-cyan-400/90 bg-black/40 px-2.5 py-1 rounded truncate max-w-lg border border-slate-800">
-                      Snippet: ${a.payload_snippet}
-                    </div>
-                  ` : ''}
-                </div>
-                <div class="flex items-center space-x-2 shrink-0">
-                  <span class="px-2.5 py-1 rounded text-[10px] font-bold uppercase border ${statusClass}">
-                    ${a.status}
-                  </span>
-                  <button onclick="inspectEvent(${alertJsonEscaped})" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-slate-950 font-semibold text-xs transition cursor-pointer shadow-md shadow-cyan-500/10">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                    <span>View Full Log & Analysis</span>
-                  </button>
-                </div>
-              </div>
-            `;
-          }).join('');
-        }
-      } catch (err) {
-        container.innerHTML = `<p class="text-threatRed py-4 text-center">Failed loading alerts: ${err}</p>`;
-      }
-    }
 
     // Toggle Stream Pause
     const btnToggleStream = document.getElementById('btn-toggle-stream');

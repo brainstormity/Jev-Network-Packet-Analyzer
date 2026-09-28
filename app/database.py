@@ -223,10 +223,35 @@ async def get_recent_events(
             return [dict(row) for row in rows]
 
 
-async def get_recent_alerts(limit: int = 50, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetch recent alert records joined with their associated event telemetry."""
+async def get_recent_alerts(
+    limit: int = 50,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Fetch recent alert records joined with their associated event telemetry with optional filtering."""
     path = db_path or settings.DATABASE_PATH
-    sql = """
+    conditions: List[str] = []
+    params: List[Any] = []
+
+    if status and status.lower() not in ("all", ""):
+        if status.lower() == "drills":
+            conditions.append("(a.is_simulated = 1 OR COALESCE(e.is_simulated, 0) = 1)")
+        elif status.lower() == "sent":
+            conditions.append("a.status IN ('sent', 'mock_sent')")
+        else:
+            conditions.append("LOWER(a.status) = ?")
+            params.append(status.lower())
+
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        conditions.append(
+            "(LOWER(a.src_ip) LIKE ? OR LOWER(COALESCE(a.dst_ip, '')) LIKE ? OR LOWER(a.threat_category) LIKE ? OR LOWER(COALESCE(a.resend_id, '')) LIKE ? OR LOWER(COALESCE(e.payload_snippet, '')) LIKE ?)"
+        )
+        params.extend([term, term, term, term, term])
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    sql = f"""
     SELECT
         a.id, a.event_id, a.src_ip, a.dst_ip, a.threat_category, a.severity,
         a.recipient, a.status, a.resend_id, a.error_message,
@@ -237,14 +262,41 @@ async def get_recent_alerts(limit: int = 50, db_path: Optional[str] = None) -> L
         e.severity_confidence, e.cached, e.alert_dispatched
     FROM alerts a
     LEFT JOIN events e ON a.event_id = e.id
+    {where_clause}
     ORDER BY a.id DESC
     LIMIT ?
     """
+    params.append(limit)
+
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(sql, (limit,)) as cursor:
+        async with db.execute(sql, tuple(params)) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+
+async def get_alert_stats(db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Calculate aggregate statistics specifically for alert dispatches."""
+    path = db_path or settings.DATABASE_PATH
+    async with aiosqlite.connect(path) as db:
+        async with db.execute("SELECT COUNT(*) FROM alerts") as cur:
+            total = (await cur.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM alerts WHERE status IN ('sent', 'mock_sent')") as cur:
+            sent = (await cur.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM alerts WHERE status = 'throttled'") as cur:
+            throttled = (await cur.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM alerts WHERE is_simulated = 1") as cur:
+            drills = (await cur.fetchone())[0]
+        async with db.execute("SELECT COUNT(*) FROM alerts WHERE severity >= 3.5") as cur:
+            critical = (await cur.fetchone())[0]
+
+        return {
+            "total_alerts": total,
+            "alerts_sent": sent,
+            "alerts_throttled": throttled,
+            "alerts_drills": drills,
+            "alerts_critical": critical,
+        }
 
 
 async def get_alert_by_id(alert_id: int, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:

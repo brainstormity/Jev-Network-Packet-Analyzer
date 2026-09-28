@@ -32,7 +32,7 @@
   * Linux: Either run with `sudo` or grant `cap_net_raw,cap_net_admin` Linux capabilities.
   * macOS: Run with `sudo` or run via Docker Compose.
 * **TypeSafe AI API Key:** Obtain from [TypeSafe AI](https://typesafe.ai).
-* **Resend API Key & Verified Domain:** Obtain from [Resend](https://resend.com).
+* **Resend API Key:** Free account from [Resend](https://resend.com) (a custom domain is **optional**; you can send free test alerts immediately using `onboarding@resend.dev`).
 
 ---
 
@@ -65,12 +65,16 @@ TYPESAFE_API_KEY=your_actual_typesafe_key_here
 JEV_API_URL=https://api.typesafe.ai/v1/systemone
 JEV_MODEL=jev-latest
 
-# Resend Email Settings (Optional: leave default for simulated alert logging)
+# Resend Email Settings
 RESEND_API_KEY=re_your_resend_api_key_here
-RESEND_FROM_EMAIL=security@your-verified-domain.com
+RESEND_FROM_EMAIL=onboarding@resend.dev
 ALERT_RECIPIENT=your_notification_email@gmail.com
 ```
-*(Note: If you don't have API keys yet, NetworkSentinel automatically operates in intelligent simulation mode so you can still test all dashboards, rate pacing, and threat scenarios immediately).*
+
+> **Important: Which `RESEND_FROM_EMAIL` should I use?**
+> * **Option A (No Domain Required — Easiest):** Leave `RESEND_FROM_EMAIL=onboarding@resend.dev`. Resend provides this built-in sandbox address for free to all accounts without needing any DNS domain setup! The only rule is that `ALERT_RECIPIENT` must be set to the exact email address you registered your Resend account with.
+> * **Option B (Custom Domain):** If you own a domain (e.g., `yourdomain.com`), go to [resend.com/domains](https://resend.com/domains), click **Add Domain**, and add the DKIM/SPF DNS records. Once verified (green checkmark), you can set `RESEND_FROM_EMAIL=security@yourdomain.com` and deliver alerts to *any* destination email!
+> * **Option C (Simulation / No Key):** If you don't supply a `RESEND_API_KEY`, NetworkSentinel will run in mock mode and display all simulated alerts in the web dashboard's **Alerts** drawer with status `mock_sent`.
 
 ### Step 4: Build and Start Containers
 Run the following command to build the image and start Redis and NetworkSentinel in the background:
@@ -236,10 +240,16 @@ pytest -v
 ### Q: Why didn't I receive an email for consecutive attacks?
 **A:** NetworkSentinel implements a strict 5-minute (300-second) anti-spam deduplication cooldown key: `alert:cooldown:<src_ip>:<threat_category>`. If an attacker fires 100 identical exploit probes within 5 minutes, 1 alert is sent, and the remaining 99 are recorded as `throttled` in the SQLite database and dashboard.
 
-### Q: Why is my Resend alert failing?
-**A:** Verify that:
-1. `RESEND_API_KEY` starts with `re_`.
-2. `RESEND_FROM_EMAIL` matches a domain verified in your Resend account dashboard (e.g. `alerts@yourdomain.com`). If using Resend sandbox, use `onboarding@resend.dev`.
+### Q: Why is my Resend alert failing or returning HTTP 403 / 422?
+**A:** Common Resend errors and how to fix them:
+1. **"The domain you are trying to send from is not verified":**
+   * If you don't own a verified domain, set `RESEND_FROM_EMAIL=onboarding@resend.dev`.
+   * **Crucial Rule:** When using `onboarding@resend.dev`, Resend's anti-spam policy only permits sending to the *single email address* you registered your Resend account with. Make sure `ALERT_RECIPIENT` matches your registered account email.
+2. **"To send to any email address, verify a domain":**
+   * If you want to send alerts to work emails, team distribution lists, or external addresses, you must verify your own domain at [resend.com/domains](https://resend.com/domains).
+   * Once DNS records propagate, set `RESEND_FROM_EMAIL=security@yourdomain.com`.
+3. **Invalid API Key:**
+   * Your key must start with `re_`. Generate a new key with sending permissions at [resend.com/api-keys](https://resend.com/api-keys).
 
 ---
 

@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     # Resend Settings
     RESEND_API_KEY: str = Field(default="", description="Resend API key")
     RESEND_FROM_EMAIL: str = Field(
-        default="security@your-verified-domain.com",
-        description="Sender email registered with Resend",
+        default="onboarding@resend.dev",
+        description="Sender email registered with Resend (use onboarding@resend.dev for zero-domain testing)",
     )
     ALERT_RECIPIENT: str = Field(
         default="your_notification_email@gmail.com",

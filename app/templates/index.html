@@ -659,6 +659,17 @@
       }
     }
 
+    // Periodic stats sync to keep UI perfectly synchronized with backend
+    setInterval(async () => {
+      try {
+        const statsRes = await fetch('/api/stats');
+        if (statsRes.ok) {
+          const stats = await statsRes.json();
+          updateStatsUI(stats);
+        }
+      } catch (e) {}
+    }, 5000);
+
     function updateStatsUI(stats) {
       document.getElementById('kpi-captured').innerText = stats.packets_captured.toLocaleString();
       document.getElementById('kpi-evaluated').innerText = stats.evaluated_by_jev.toLocaleString();
@@ -701,17 +712,28 @@
       const capturedEl = document.getElementById('kpi-captured');
       capturedEl.innerText = (parseInt(capturedEl.innerText.replace(/,/g, '')) + 1).toLocaleString();
 
-      const evaluatedEl = document.getElementById('kpi-evaluated');
-      evaluatedEl.innerText = (parseInt(evaluatedEl.innerText.replace(/,/g, '')) + 1).toLocaleString();
+      if (!event.cached) {
+        // Only increment "Evaluated by Jev" when an actual Jev AI triage took place!
+        const evaluatedEl = document.getElementById('kpi-evaluated');
+        evaluatedEl.innerText = (parseInt(evaluatedEl.innerText.replace(/,/g, '')) + 1).toLocaleString();
+      } else {
+        // Increment Cache Hits when resolved via Redis flow cache or L1 Pre-Filter
+        const cacheHitsEl = document.getElementById('kpi-cache-hits');
+        cacheHitsEl.innerText = (parseInt(cacheHitsEl.innerText.replace(/,/g, '')) + 1).toLocaleString();
+      }
 
       if (isThreat) {
         const threatEl = document.getElementById('kpi-threats');
         threatEl.innerText = (parseInt(threatEl.innerText.replace(/,/g, '')) + 1).toLocaleString();
       }
 
-      if (event.cached) {
-        const cacheHitsEl = document.getElementById('kpi-cache-hits');
-        cacheHitsEl.innerText = (parseInt(cacheHitsEl.innerText.replace(/,/g, '')) + 1).toLocaleString();
+      // Recompute real-time cache ratio
+      const curEval = parseInt(document.getElementById('kpi-evaluated').innerText.replace(/,/g, '')) || 0;
+      const curCache = parseInt(document.getElementById('kpi-cache-hits').innerText.replace(/,/g, '')) || 0;
+      const curTotal = curEval + curCache;
+      if (curTotal > 0) {
+        const ratio = ((curCache / curTotal) * 100).toFixed(1);
+        document.getElementById('kpi-cache-ratio').innerText = `${ratio}%`;
       }
 
       if (!streamPaused) {
